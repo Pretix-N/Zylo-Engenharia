@@ -1,14 +1,6 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  FolderKanban,
-  Users,
-  UserSquare2,
-  TrendingUp,
-  Building2,
-  Zap
-} from 'lucide-react'
+import { LayoutDashboard, FolderKanban, Users, UserSquare2, TrendingUp, Zap } from 'lucide-react'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -20,70 +12,48 @@ const navItems = [
 
 export default function Sidebar({ isOpen }) {
   return (
-    <aside
-      className={`
-        flex flex-col bg-[#1a1f2e] text-white transition-all duration-300 ease-in-out flex-shrink-0
-        ${isOpen ? 'w-64' : 'w-16'}
-      `}
-    >
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10 min-h-[72px]">
-        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-500 flex-shrink-0">
-          <Building2 size={20} className="text-white" />
+    <aside className={`flex flex-col bg-[#0a0a0a] border-r border-[#1e1e1e] transition-all duration-300 ease-in-out flex-shrink-0 ${isOpen ? 'w-60' : 'w-16'}`}>
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-[#1e1e1e] min-h-[72px]">
+        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-amber-500 flex-shrink-0">
+          <Zap size={18} className="text-black" />
         </div>
         {isOpen && (
-          <div className="overflow-hidden">
-            <div className="flex items-center gap-1">
-              <span className="font-bold text-lg leading-tight text-white">Zylo</span>
-              <Zap size={14} className="text-orange-400 flex-shrink-0" />
-            </div>
-            <span className="text-xs text-slate-400 font-medium tracking-wider">ENGENHARIA</span>
+          <div>
+            <p className="font-black text-lg text-white leading-tight tracking-tight">ZYLO</p>
+            <p className="text-[10px] text-amber-500 font-bold tracking-widest">ENGENHARIA</p>
           </div>
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 py-4 space-y-1 px-2">
-        {isOpen && (
-          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest px-3 pb-2">Menu Principal</p>
-        )}
+      <nav className="flex-1 py-4 px-2 space-y-1">
+        {isOpen && <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest px-3 pb-2">Menu</p>}
         {navItems.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
+          <NavLink key={to} to={to} end={to === '/'}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group
-              ${isActive
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                : 'text-slate-400 hover:bg-white/10 hover:text-white'
-              }
-              ${!isOpen ? 'justify-center' : ''}
-              `
+              `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150
+              ${isActive ? 'bg-amber-500 text-black font-bold' : 'text-gray-500 hover:bg-[#1a1a1a] hover:text-amber-400'}
+              ${!isOpen ? 'justify-center' : ''}`
             }
           >
             {({ isActive }) => (
               <>
-                <Icon size={20} className={`flex-shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
-                {isOpen && (
-                  <span className="font-medium text-sm truncate">{label}</span>
-                )}
+                <Icon size={18} className="flex-shrink-0" />
+                {isOpen && <span className="text-sm truncate">{label}</span>}
               </>
             )}
           </NavLink>
         ))}
       </nav>
 
-      {/* Footer */}
       {isOpen && (
-        <div className="px-4 py-4 border-t border-white/10">
+        <div className="px-4 py-4 border-t border-[#1e1e1e]">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-white">ML</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
+              <span className="text-xs font-black text-black">Z</span>
             </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-medium text-white truncate">Mariana Lima</p>
-              <p className="text-xs text-slate-400 truncate">Gerente de Projetos</p>
+            <div>
+              <p className="text-sm font-semibold text-white">Zylo Engenharia</p>
+              <p className="text-xs text-gray-500">Sistema de Gestão</p>
             </div>
           </div>
         </div>
