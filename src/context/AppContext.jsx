@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect } from 'react'
+import { ref, onValue, set } from 'firebase/database'
+import { db } from '../firebase'
 
 const initialState = {
   projetos: [
@@ -75,12 +77,40 @@ function reducer(state, action) {
 const AppContext = createContext(null)
 
 export function AppProvider({ children }) {
-  const saved = localStorage.getItem('zylo-data')
-  const [state, dispatch] = useReducer(reducer, saved ? JSON.parse(saved) : initialState)
+  const [state, setState] = useState(null)
+  const dbRef = ref(db, '/zylo')
 
   useEffect(() => {
-    localStorage.setItem('zylo-data', JSON.stringify(state))
-  }, [state])
+    const unsub = onValue(dbRef, (snapshot) => {
+      const data = snapshot.val()
+      if (data) {
+        setState(data)
+      } else {
+        set(dbRef, initialState)
+      }
+    })
+    return () => unsub()
+  }, [])
+
+  function dispatch(action) {
+    if (!state) return
+    const newState = reducer(state, action)
+    set(dbRef, newState)
+  }
+
+  if (!state) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#0f0f0f]">
+        <div className="text-center">
+          <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center mx-auto mb-3">
+            <span className="text-black font-black text-lg">Z</span>
+          </div>
+          <p className="text-white font-bold text-sm">Conectando...</p>
+          <p className="text-gray-600 text-xs mt-1">Sincronizando com o servidor</p>
+        </div>
+      </div>
+    )
+  }
 
   return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>
 }
