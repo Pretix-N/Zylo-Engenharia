@@ -82,7 +82,6 @@ export default function Clientes() {
         </div>
       )}
 
-      {/* Detail Modal */}
       {detail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={() => { setDetail(null); setConfirmDelete(null) }}>
           <div className="bg-[#141414] border border-[#2a2a2a] rounded-2xl w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
