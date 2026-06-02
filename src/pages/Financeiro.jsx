@@ -94,15 +94,14 @@ export default function Financeiro() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ContaTable title="Contas a Receber" total={ttCR} onAdd={() => setModalCR('novo')}
-          headers={['Cliente','Valor','Venc.','Status']}
-          rows={financeiro.contasReceber.map(c => ({
+          items={financeiro.contasReceber.map(c => ({
             id: c.id,
-            cols: [
-              <div><p className="font-semibold text-white text-xs">{c.cliente}</p><p className="text-xs text-gray-600 truncate max-w-[140px]">{c.descricao}</p></div>,
-              <span className="font-bold text-amber-400 text-xs">{fBRL(c.valor)}</span>,
-              <span className="text-gray-400 text-xs">{new Date(c.vencimento).toLocaleDateString('pt-BR')}</span>,
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stCR[c.status]}`}>{c.status}</span>
-            ],
+            parte: c.cliente,
+            descricao: c.descricao,
+            valor: c.valor,
+            vencimento: c.vencimento,
+            status: c.status,
+            statusClass: stCR[c.status],
             onEdit: () => setModalCR(c),
             onDelete: () => delCR(c.id),
             confirmingDelete: confirmDel === `CR-${c.id}`,
@@ -110,15 +109,14 @@ export default function Financeiro() {
           }))}
         />
         <ContaTable title="Contas a Pagar" total={ttCP} onAdd={() => setModalCP('novo')}
-          headers={['Fornecedor','Valor','Venc.','Status']}
-          rows={financeiro.contasPagar.map(c => ({
+          items={financeiro.contasPagar.map(c => ({
             id: c.id,
-            cols: [
-              <div><p className="font-semibold text-white text-xs">{c.fornecedor}</p><p className="text-xs text-gray-600 truncate max-w-[140px]">{c.descricao}</p></div>,
-              <span className="font-bold text-amber-400 text-xs">{fBRL(c.valor)}</span>,
-              <span className="text-gray-400 text-xs">{new Date(c.vencimento).toLocaleDateString('pt-BR')}</span>,
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${stCP[c.status]}`}>{c.status}</span>
-            ],
+            parte: c.fornecedor,
+            descricao: c.descricao,
+            valor: c.valor,
+            vencimento: c.vencimento,
+            status: c.status,
+            statusClass: stCP[c.status],
             onEdit: () => setModalCP(c),
             onDelete: () => delCP(c.id),
             confirmingDelete: confirmDel === `CP-${c.id}`,
@@ -163,7 +161,7 @@ export default function Financeiro() {
   )
 }
 
-function ContaTable({ title, total, onAdd, headers, rows }) {
+function ContaTable({ title, total, onAdd, items }) {
   return (
     <div className="bg-[#141414] border border-[#2a2a2a] rounded-2xl overflow-hidden">
       <div className="px-5 py-4 border-b border-[#2a2a2a] flex items-center justify-between">
@@ -172,30 +170,37 @@ function ContaTable({ title, total, onAdd, headers, rows }) {
           <Plus size={13}/> Adicionar
         </button>
       </div>
-      {rows.length === 0 ? <p className="text-gray-600 text-sm text-center py-8">Nenhum lançamento.</p> : (
-        <table className="w-full text-sm">
-          <thead><tr className="bg-[#0f0f0f]">{headers.map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-amber-500 uppercase tracking-wider">{h}</th>)}<th className="px-4 py-3"></th></tr></thead>
-          <tbody className="divide-y divide-[#1e1e1e]">
-            {rows.map(row => (
-              <tr key={row.id} className="hover:bg-[#1a1a1a] transition-colors">
-                {row.cols.map((col, i) => <td key={i} className="px-4 py-3">{col}</td>)}
-                <td className="px-4 py-3">
-                  {row.confirmingDelete ? (
+      {items.length === 0 ? <p className="text-gray-600 text-sm text-center py-8">Nenhum lançamento.</p> : (
+        <div className="divide-y divide-[#1e1e1e]">
+          {items.map(item => (
+            <div key={item.id} className="px-5 py-3 hover:bg-[#1a1a1a] transition-colors">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-white text-xs truncate">{item.parte}</p>
+                  <p className="text-xs text-gray-600 truncate mt-0.5">{item.descricao}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${item.statusClass}`}>{item.status}</span>
+                  {item.confirmingDelete ? (
                     <div className="flex gap-1">
-                      <button onClick={row.onCancelDelete} className="text-xs text-gray-500 hover:text-white px-2 py-1 rounded-lg hover:bg-[#2a2a2a]">Não</button>
-                      <button onClick={row.onDelete} className="text-xs text-red-400 bg-red-400/10 px-2 py-1 rounded-lg font-bold">Sim</button>
+                      <button onClick={item.onCancelDelete} className="text-xs text-gray-500 hover:text-white px-2 py-1 rounded-lg hover:bg-[#2a2a2a]">Não</button>
+                      <button onClick={item.onDelete} className="text-xs text-red-400 bg-red-400/10 px-2 py-1 rounded-lg font-bold">Sim</button>
                     </div>
                   ) : (
                     <div className="flex gap-1">
-                      <button onClick={row.onEdit} className="p-1.5 rounded-lg text-gray-600 hover:text-amber-400 hover:bg-[#2a2a2a] transition-all"><Pencil size={12}/></button>
-                      <button onClick={row.onDelete} className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-[#2a2a2a] transition-all"><Trash2 size={12}/></button>
+                      <button onClick={item.onEdit} className="p-1.5 rounded-lg text-gray-600 hover:text-amber-400 hover:bg-[#2a2a2a] transition-all"><Pencil size={12}/></button>
+                      <button onClick={item.onDelete} className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-[#2a2a2a] transition-all"><Trash2 size={12}/></button>
                     </div>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 mt-1.5">
+                <span className="font-bold text-amber-400 text-xs">{fBRL(item.valor)}</span>
+                <span className="text-gray-600 text-xs">Venc. {new Date(item.vencimento).toLocaleDateString('pt-BR')}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
