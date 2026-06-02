@@ -51,6 +51,12 @@ const initialState = {
   },
 }
 
+function toArr(val) {
+  if (!val) return []
+  if (Array.isArray(val)) return val
+  return Object.values(val)
+}
+
 function reducer(state, action) {
   const newId = () => Date.now().toString()
   switch (action.type) {
@@ -84,7 +90,18 @@ export function AppProvider({ children }) {
     const unsub = onValue(dbRef, (snapshot) => {
       const data = snapshot.val()
       if (data) {
-        setState(data)
+        setState({
+          projetos: toArr(data.projetos),
+          clientes: toArr(data.clientes),
+          equipe: toArr(data.equipe),
+          financeiro: {
+            mensal: toArr(data.financeiro?.mensal).length === 12
+              ? toArr(data.financeiro.mensal)
+              : initialState.financeiro.mensal,
+            contasReceber: toArr(data.financeiro?.contasReceber),
+            contasPagar: toArr(data.financeiro?.contasPagar),
+          }
+        })
       } else {
         set(dbRef, initialState)
       }
