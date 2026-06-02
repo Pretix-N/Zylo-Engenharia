@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { TrendingUp, TrendingDown, DollarSign, Percent, Plus, Pencil, Trash2 } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Percent, Plus, Pencil, Trash2, Settings2 } from 'lucide-react'
 import Modal from '../components/Modal'
 import ContaForm from '../components/forms/ContaForm'
 
@@ -16,6 +16,8 @@ export default function Financeiro() {
   const [modalCR, setModalCR] = useState(null)
   const [modalCP, setModalCP] = useState(null)
   const [confirmDel, setConfirmDel] = useState(null)
+  const [editMensal, setEditMensal] = useState(false)
+  const [mensalForm, setMensalForm] = useState(null)
 
   const receitaTotal = financeiro.mensal.reduce((s,m)=>s+m.receita,0)
   const despesasTotal = financeiro.mensal.reduce((s,m)=>s+m.despesas,0)
@@ -44,7 +46,13 @@ export default function Financeiro() {
       </div>
 
       <div className="bg-[#141414] border border-[#2a2a2a] rounded-2xl p-5">
-        <h2 className="text-sm font-bold text-white mb-4">Evolução Financeira 2024</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold text-white">Evolução Financeira 2024</h2>
+          <button onClick={() => { setMensalForm(financeiro.mensal.map(m => ({ ...m }))); setEditMensal(true) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-400 hover:text-amber-400 hover:bg-[#1a1a1a] border border-[#3a3a3a] transition-all">
+            <Settings2 size={13} /> Editar valores
+          </button>
+        </div>
         <ResponsiveContainer width="100%" height={240}>
           <AreaChart data={financeiro.mensal}>
             <defs>
@@ -64,7 +72,13 @@ export default function Financeiro() {
       </div>
 
       <div className="bg-[#141414] border border-[#2a2a2a] rounded-2xl p-5">
-        <h2 className="text-sm font-bold text-white mb-4">Comparação Mensal</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold text-white">Comparação Mensal</h2>
+          <button onClick={() => { setMensalForm(financeiro.mensal.map(m => ({ ...m }))); setEditMensal(true) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-400 hover:text-amber-400 hover:bg-[#1a1a1a] border border-[#3a3a3a] transition-all">
+            <Settings2 size={13} /> Editar valores
+          </button>
+        </div>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={financeiro.mensal} barGap={3}>
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
@@ -113,6 +127,32 @@ export default function Financeiro() {
         />
       </div>
 
+      {editMensal && mensalForm && (
+        <Modal title="Editar Dados Mensais" onClose={() => setEditMensal(false)}>
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            <div className="grid grid-cols-4 gap-2 text-xs font-bold text-gray-500 uppercase px-1">
+              <span>Mês</span><span>Receita (R$)</span><span>Despesas (R$)</span><span>Lucro (R$)</span>
+            </div>
+            {mensalForm.map((m, i) => (
+              <div key={m.mes} className="grid grid-cols-4 gap-2 items-center">
+                <span className="text-xs font-bold text-amber-400">{m.mes}</span>
+                <input type="number" value={m.receita} min="0"
+                  onChange={e => { const f = [...mensalForm]; f[i] = { ...f[i], receita: Number(e.target.value), lucro: Number(e.target.value) - f[i].despesas }; setMensalForm(f) }}
+                  className="bg-[#222] border border-[#3a3a3a] text-white rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-500" />
+                <input type="number" value={m.despesas} min="0"
+                  onChange={e => { const f = [...mensalForm]; f[i] = { ...f[i], despesas: Number(e.target.value), lucro: f[i].receita - Number(e.target.value) }; setMensalForm(f) }}
+                  className="bg-[#222] border border-[#3a3a3a] text-white rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-500" />
+                <span className={`text-xs font-bold ${m.lucro >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fBRL(m.lucro)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-3 pt-4 border-t border-[#2a2a2a] mt-2">
+            <button type="button" onClick={() => setEditMensal(false)} className="flex-1 py-2.5 rounded-xl border border-[#3a3a3a] text-gray-400 hover:text-white transition-all text-sm font-medium">Cancelar</button>
+            <button onClick={() => { dispatch({ type: 'UPDATE_MENSAL', payload: mensalForm }); setEditMensal(false) }}
+              className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm transition-all">Salvar</button>
+          </div>
+        </Modal>
+      )}
       {modalCR && <Modal title={modalCR==='novo'?'Nova Conta a Receber':'Editar Conta'} onClose={() => setModalCR(null)}>
         <ContaForm conta={modalCR==='novo'?null:modalCR} tipo="receber" onClose={() => setModalCR(null)} />
       </Modal>}

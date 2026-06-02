@@ -67,6 +67,7 @@ function reducer(state, action) {
     case 'ADD_CONTA_PAGAR': return { ...state, financeiro: { ...state.financeiro, contasPagar: [...state.financeiro.contasPagar, { ...action.payload, id: newId() }] } }
     case 'UPDATE_CONTA_PAGAR': return { ...state, financeiro: { ...state.financeiro, contasPagar: state.financeiro.contasPagar.map(c => c.id === action.payload.id ? action.payload : c) } }
     case 'DELETE_CONTA_PAGAR': return { ...state, financeiro: { ...state.financeiro, contasPagar: state.financeiro.contasPagar.filter(c => c.id !== action.payload) } }
+    case 'UPDATE_MENSAL': return { ...state, financeiro: { ...state.financeiro, mensal: action.payload } }
     default: return state
   }
 }
