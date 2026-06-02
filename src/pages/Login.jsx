@@ -55,7 +55,7 @@ export default function Login() {
               type="password"
               value={senha}
               onChange={e => setSenha(e.target.value)}
-              placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+              placeholder="••••••••"
               required
               className="w-full bg-[#222] border border-[#3a3a3a] text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 transition-colors placeholder-gray-600"
             />
