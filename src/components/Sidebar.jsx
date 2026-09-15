@@ -3,11 +3,11 @@ import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, FolderKanban, Users, UserSquare2, TrendingUp, Zap } from 'lucide-react'
 
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/projetos', icon: FolderKanban, label: 'Projetos' },
-  { to: '/clientes', icon: UserSquare2, label: 'Clientes' },
-  { to: '/equipe', icon: Users, label: 'Equipe' },
-  { to: '/financeiro', icon: TrendingUp, label: 'Financeiro' },
+  { to: '/app', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/app/projetos', icon: FolderKanban, label: 'Projetos' },
+  { to: '/app/clientes', icon: UserSquare2, label: 'Clientes' },
+  { to: '/app/equipe', icon: Users, label: 'Equipe' },
+  { to: '/app/financeiro', icon: TrendingUp, label: 'Financeiro' },
 ]
 
 export default function Sidebar({ isOpen }) {
@@ -28,7 +28,7 @@ export default function Sidebar({ isOpen }) {
       <nav className="flex-1 py-4 px-2 space-y-1">
         {isOpen && <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest px-3 pb-2">Menu</p>}
         {navItems.map(({ to, icon: Icon, label }) => (
-          <NavLink key={to} to={to} end={to === '/'}
+          <NavLink key={to} to={to} end={to === '/app'}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150
               ${isActive ? 'bg-amber-500 text-black font-bold' : 'text-gray-500 hover:bg-[#1a1a1a] hover:text-amber-400'}

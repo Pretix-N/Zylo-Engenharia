@@ -68,6 +68,12 @@ export default function Login() {
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
+
+        <p className="mt-6 text-center">
+          <a href="/" className="text-xs text-gray-600 transition-colors hover:text-amber-500">
+            &larr; Voltar ao site
+          </a>
+        </p>
       </div>
     </div>
   )
