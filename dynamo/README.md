@@ -83,11 +83,36 @@ para dez scripts ruins seguidos.
 O ciclo que converge:
 
 1. **Marcar** — `modo = "marcar"`, `executar = true`. O script grava a decisão dele em
-   `PARAM_MARCACAO` (padrão `Comentários`) no formato `ZYLO:casa=7;papel=cima`.
+   `PARAM_MARCACAO` (padrão `Comentários`) no formato:
+
+   ```
+   ZYLO:casa=7;papel=cima;regra=nivel
+   ```
+
    **Sobrescreve o conteúdo atual do parâmetro** nos elementos do plano.
-2. **Revisar** — no Revit, crie uma tabela (Schedule) de Paredes com as colunas
-   `Comentários` + `Família e tipo`. Ordene por `Comentários`. Corrija na mão o que
-   ficou errado: trocar `papel=cima` por `papel=baixo`, mover um elemento de casa, etc.
+
+2. **Revisar só os chutes** — no Revit, tabela (Schedule) de Paredes com as colunas
+   `Comentários` + `Família e tipo`, ordenada por `Comentários`.
+
+   O campo `regra=` diz o quanto confiar em cada linha, e é o que torna a revisão
+   viável — você filtra em vez de ler 300 linhas:
+
+   | `regra=` | Confiança | Revisar? |
+   |---|---|---|
+   | `marcado` | você mesmo decidiu numa rodada anterior | não |
+   | `moldura-categoria` | é Porta ou Janela no Revit | não |
+   | `nome` | o nome do elemento diz a posição | quase nunca |
+   | `nivel` | níveis diferentes no Revit: térreo × superior | raramente |
+   | `moldura-nome` | palavra no nome | conferir por amostragem |
+   | **`corte`** | **chute pela altura** | **sim** |
+   | **`mediana`** | **chute, e o corte já tinha falhado** | **sim, primeiro** |
+
+   Filtre a tabela por `Comentários contém "regra=mediana"`, corrija, depois
+   `regra=corte`. As demais regras você só confere por amostragem.
+
+   Corrigir = editar o texto na célula: trocar `papel=cima` por `papel=baixo`, mudar o
+   número da casa. Pode deixar o `regra=` como está — ele é ignorado na leitura.
+
 3. **Pintar** — `casas = "marcacao"`, `faixas = "parametro"`. Agora o script não adivinha
    nada: pinta exatamente o que a tabela diz. Elemento sem marcação cai nas regras
    automáticas e é contado separadamente no relatório.

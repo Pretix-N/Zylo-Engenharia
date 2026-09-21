@@ -299,6 +299,17 @@ if saida:
         falhas.append("esperava 70 marcados, achei %d" % len(gravados))
     exemplo = gravados[0]._pars["Comentários"].valor
     print("[marcar] exemplo gravado:", exemplo)
+    if "regra=" not in exemplo:
+        falhas.append("marcacao sem a regra: %s" % exemplo)
+    # os chutes tem que ser filtraveis: regra=corte / regra=mediana
+    regras = {}
+    for e in gravados:
+        v = e._pars["Comentários"].valor
+        r = [x for x in v.split(";") if x.startswith("regra=")]
+        regras[r[0]] = regras.get(r[0], 0) + 1 if r else 0
+    print("[marcar] regras gravadas:", regras)
+    if not regras:
+        falhas.append("nenhuma regra gravada")
     # agora pinta lendo da marcacao, sem adivinhar nada
     try:
         out2 = rodar(["X", "override", "marcacao", "parametro", False], doc_m, sel_m)

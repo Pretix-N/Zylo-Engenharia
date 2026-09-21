@@ -25,7 +25,7 @@ ENTRADAS DO NÓ (portas IN):
 
 SAÍDA (OUT):
     [resumo (list<str>), detalhe (list<list>)]
-    detalhe = casa | trio | papel | hex | id | nome
+    detalhe = casa | trio | papel | regra | hex | id | nome
 
 SELEÇÃO:
     O script lê a seleção ativa do Revit (uidoc.Selection). Selecione os blocos
@@ -600,12 +600,14 @@ def repartir_fachada(grupo, ids_moldura, stats=None):
     for d in grupo:
         motivo = motivo_moldura(d, ids_moldura)
         if motivo is not None:
+            d['regra'] = u"moldura-" + motivo
             papeis["moldura"].append(d)
             stats["moldura_" + motivo] = stats.get("moldura_" + motivo, 0) + 1
             continue
         parede.append(d)
         nome = papel_por_nome(d)
         if nome is not None:
+            d['regra'] = u"nome"
             papeis[nome].append(d)
             stats["parede_nome"] = stats.get("parede_nome", 0) + 1
         else:
@@ -621,6 +623,7 @@ def repartir_fachada(grupo, ids_moldura, stats=None):
             base = niveis[0]
             for d in sobrando:
                 z = d.get('nivel')
+                d['regra'] = u"nivel"
                 papeis["baixo" if (z is not None and z <= base + 1e-6) else "cima"].append(d)
             stats["parede_nivel"] = stats.get("parede_nivel", 0) + len(sobrando)
             return papeis
@@ -635,6 +638,7 @@ def repartir_fachada(grupo, ids_moldura, stats=None):
 
     geom = {"cima": [], "baixo": []}
     for d in sobrando:
+        d['regra'] = u"corte"
         geom["cima" if d['c'][2] >= corte else "baixo"].append(d)
 
     # regra 6: o corte falha quando as paredes estao todas na mesma altura
@@ -642,6 +646,8 @@ def repartir_fachada(grupo, ids_moldura, stats=None):
     if (EQUILIBRAR_FAIXAS and not ja_tem_os_dois and len(sobrando) >= 2
             and (not geom["cima"] or not geom["baixo"])):
         ordenados = sorted(sobrando, key=lambda q: q['c'][2])
+        for d in ordenados:
+            d['regra'] = u"mediana"
         meio = len(ordenados) // 2
         geom = {"baixo": ordenados[:meio], "cima": ordenados[meio:]}
         stats["parede_equilibrada"] = stats.get("parede_equilibrada", 0) + len(ordenados)
@@ -677,7 +683,7 @@ def ler_marcacao(d):
     return (casa, papel)
 
 
-def escrever_marcacao(elemento, casa, papel):
+def escrever_marcacao(elemento, casa, papel, regra=u"?"):
     try:
         p = elemento.LookupParameter(PARAM_MARCACAO)
     except Exception:
@@ -689,7 +695,11 @@ def escrever_marcacao(elemento, casa, papel):
             return False
     except Exception:
         pass
-    p.Set(u"{0}casa={1};papel={2}".format(PREFIXO_MARCACAO, casa, papel))
+    # a regra vai junto: e o que permite filtrar na tabela do Revit so os
+    # elementos que o script CHUTOU (regra=corte / regra=mediana) em vez de
+    # revisar linha por linha.
+    p.Set(u"{0}casa={1};papel={2};regra={3}".format(
+        PREFIXO_MARCACAO, casa, papel, regra))
     return True
 
 
@@ -719,6 +729,7 @@ def repartir_por_marcacao(grupo, ids_moldura, stats):
     for d in grupo:
         _, papel = ler_marcacao(d)
         if papel in papeis:
+            d['regra'] = u"marcado"
             papeis[papel].append(d)
             stats["papel_marcado"] = stats.get("papel_marcado", 0) + 1
         else:
@@ -1087,7 +1098,8 @@ def principal():
                     for k, (nome, itens) in enumerate(partes):
                         for d in itens:
                             plano.append({'casa': indice_casa + 1, 'trio': trio_idx + 1,
-                                          'papel': nome, 'hex': trio[k], 'el': d['el']})
+                                          'papel': nome, 'hex': trio[k], 'el': d['el'],
+                                          'regra': d.get('regra', u"?")})
 
                 resumo.append(u"{0} elemento(s) -> {1} casa(s) [{2}] -> 3 cores por casa "
                               u"-> trios 1..8 em ciclo.".format(
@@ -1132,7 +1144,8 @@ def principal():
                     resumo.append(u"   ... mais {0} casa(s)".format(len(distribuicao) - 15))
 
                 for p in plano:
-                    detalhe.append([p['casa'], p['trio'], p['papel'], p['hex'],
+                    detalhe.append([p['casa'], p['trio'], p['papel'],
+                                    p.get('regra', u"?"), p['hex'],
                                     id_valor(p['el'].Id), nome_seguro(p['el'])])
 
                 if modo == "marcar":
@@ -1163,7 +1176,8 @@ def principal():
                         el = p['el']
                         try:
                             if modo == "marcar":
-                                if escrever_marcacao(el, p['casa'], p['papel']):
+                                if escrever_marcacao(el, p['casa'], p['papel'],
+                                                     p.get('regra', u"?")):
                                     ok += 1
                                 else:
                                     falhas.append((id_valor(el.Id),
