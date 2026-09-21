@@ -1,7 +1,7 @@
 {
-  "Uuid": "5b07eabe-8f3c-4e38-a907-e05a7963155e",
+  "Uuid": "816c9424-8598-4c0a-ab92-1f6d8039129c",
   "IsCustomNode": false,
-  "Description": "Diagnostico do no Python: cada etapa num try proprio.",
+  "Description": "Diagnostico de ambiente e API: cada etapa num try proprio.",
   "Name": "Diagnostico",
   "ElementResolver": {
     "ResolutionMap": {}
@@ -12,15 +12,15 @@
     {
       "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
       "NodeType": "PythonScriptNode",
-      "Code": "# -*- coding: utf-8 -*-\n\"\"\"Diagnóstico do nó Python do Dynamo.\n\nNenhuma etapa pode derrubar as outras: cada uma tem seu próprio try.\nSe ESTE nó também devolver null, o problema é o nó/engine, não o script.\n\"\"\"\n\netapas = []\nDB = None\nDocumentManager = None\n\n\ndef passo(rotulo, fn):\n    try:\n        etapas.append(u\"OK      {0}: {1}\".format(rotulo, fn()))\n    except Exception as erro:\n        etapas.append(u\"FALHOU  {0}: {1}: {2}\".format(rotulo, type(erro).__name__, erro))\n\n\ntry:\n    import sys\n    etapas.append(u\"OK      01 python: {0}\".format(sys.version.replace(\"\\n\", \" \")))\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  01 python: {0}\".format(erro))\n\ntry:\n    etapas.append(u\"OK      02 acentos: ação, coração, portão, área — em dash\")\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  02 acentos: {0}\".format(erro))\n\ntry:\n    import clr\n    clr.AddReference('RevitAPI')\n    clr.AddReference('RevitServices')\n    etapas.append(u\"OK      03 clr + AddReference\")\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  03 clr: {0}: {1}\".format(type(erro).__name__, erro))\n\ntry:\n    import Autodesk.Revit.DB as _DB\n    from RevitServices.Persistence import DocumentManager as _DM\n    from RevitServices.Transactions import TransactionManager as _TM\n    DB, DocumentManager = _DB, _DM\n    etapas.append(u\"OK      04 imports Revit\")\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  04 imports Revit: {0}: {1}\".format(type(erro).__name__, erro))\n\nif DB is not None and DocumentManager is not None:\n    passo(u\"05 documento\", lambda: DocumentManager.Instance.CurrentDBDocument.Title)\n    passo(u\"06 vista ativa\", lambda: u\"{0}  /  tipo {1}\".format(\n        DocumentManager.Instance.CurrentDBDocument.ActiveView.Name,\n        DocumentManager.Instance.CurrentDBDocument.ActiveView.ViewType))\n    passo(u\"07 overrides na vista\", lambda:\n          DocumentManager.Instance.CurrentDBDocument.ActiveView.AreGraphicsOverridesAllowed())\n    passo(u\"08 seleção\", lambda: u\"{0} elemento(s)\".format(len(list(\n        DocumentManager.Instance.CurrentUIApplication\n        .ActiveUIDocument.Selection.GetElementIds()))))\n    passo(u\"09 BuiltInCategory\", lambda: u\"{0}, {1}\".format(\n        DB.BuiltInCategory.OST_Walls, DB.BuiltInCategory.OST_Parts))\n    passo(u\"10 Category.GetCategory\", lambda: DB.Category.GetCategory(\n        DocumentManager.Instance.CurrentDBDocument,\n        DB.BuiltInCategory.OST_Windows).Name)\n    passo(u\"11 OverrideGraphicSettings\", lambda: u\"criado, tem \"\n          u\"SetSurfaceForegroundPatternColor={0}\".format(\n              hasattr(DB.OverrideGraphicSettings(), 'SetSurfaceForegroundPatternColor')))\n    passo(u\"12 DB.Color\", lambda: u\"{0}\".format(DB.Color(250, 214, 140)))\n    passo(u\"13 SpecTypeId\", lambda: u\"{0}\".format(DB.SpecTypeId.Reference.Material))\n    passo(u\"14 ElementId.Value\", lambda: u\"{0}\".format(\n        getattr(DB.ElementId(7), 'Value', getattr(DB.ElementId(7), 'IntegerValue', '?'))))\n    passo(u\"15 isinstance DB.Group\", lambda: isinstance(object(), DB.Group))\n\n    # o que o script de verdade faz no primeiro passo\n    def _primeiro_elemento():\n        doc = DocumentManager.Instance.CurrentDBDocument\n        uidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\n        ids = list(uidoc.Selection.GetElementIds())\n        if not ids:\n            return u\"nada selecionado\"\n        el = doc.GetElement(ids[0])\n        bb = el.get_BoundingBox(None)\n        try:\n            nome = el.Name\n        except Exception as e:\n            nome = u\"<Name lança {0}>\".format(type(e).__name__)\n        return u\"id={0} nome={1} categoria={2} bbox={3}\".format(\n            ids[0], nome, el.Category.Name, u\"ok\" if bb is not None else u\"None\")\n    passo(u\"16 primeiro selecionado\", _primeiro_elemento)\n\netapas.append(u\"--- fim do diagnóstico, {0} etapas ---\".format(len(etapas)))\nOUT = etapas\n",
+      "Code": "# -*- coding: utf-8 -*-\n\"\"\"Diagnostico de ambiente e API \u2014 no Python do Dynamo (CPython3).\n\nRegra de ouro: nenhuma etapa derruba as outras. Cada verificacao tem seu\nproprio try e escreve uma linha em `etapas`, que vira o OUT.\nSe ESTE no devolver null, o problema e o no/engine, nao o script.\n\"\"\"\n\netapas = []\nDB = None\nDocumentManager = None\nTransactionManager = None\n\n\ndef passo(rotulo, fn):\n    \"\"\"Executa fn() e registra OK ou FALHOU. Nunca propaga excecao.\"\"\"\n    try:\n        etapas.append(u\"OK      {0}: {1}\".format(rotulo, fn()))\n    except Exception as erro:\n        etapas.append(u\"FALHOU  {0}: {1}: {2}\".format(rotulo, type(erro).__name__, erro))\n\n\ndef doc():\n    return DocumentManager.Instance.CurrentDBDocument\n\n\ndef uidoc():\n    return DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\n\n\n# 1 -------------------------------------------------------------------------\ntry:\n    import sys\n    etapas.append(u\"OK      01 python: {0}\".format(sys.version.replace(\"\\n\", \" \")))\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  01 python: {0}: {1}\".format(type(erro).__name__, erro))\n\n# 2 -------------------------------------------------------------------------\ntry:\n    _acentos = u\"acao coracao portao area cedilha traco\"\n    _reais = u\"a\u00e7\u00e3o cora\u00e7\u00e3o port\u00e3o \u00e1rea \u00e7edilha \u2014 travess\u00e3o\"\n    etapas.append(u\"OK      02 encoding: {0} | {1} chars\".format(_reais, len(_reais)))\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  02 encoding: {0}: {1}\".format(type(erro).__name__, erro))\n\n# 3 -------------------------------------------------------------------------\ntry:\n    import clr\n    clr.AddReference('RevitAPI')\n    clr.AddReference('RevitServices')\n    etapas.append(u\"OK      03 clr + AddReference(RevitAPI, RevitServices)\")\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  03 clr: {0}: {1}\".format(type(erro).__name__, erro))\n\n# 4 -------------------------------------------------------------------------\ntry:\n    import Autodesk.Revit.DB as _DB\n    from RevitServices.Persistence import DocumentManager as _DM\n    from RevitServices.Transactions import TransactionManager as _TM\n    DB, DocumentManager, TransactionManager = _DB, _DM, _TM\n    etapas.append(u\"OK      04 imports: DB, DocumentManager, TransactionManager\")\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  04 imports: {0}: {1}\".format(type(erro).__name__, erro))\n\nif DB is None or DocumentManager is None:\n    etapas.append(u\"        (etapas 05-18 puladas: sem acesso a API do Revit)\")\nelse:\n    # 5 ---------------------------------------------------------------------\n    passo(u\"05 documento\", lambda: doc().Title)\n\n    # 6 ---------------------------------------------------------------------\n    passo(u\"06 vista ativa\", lambda: u\"{0}  /  tipo {1}\".format(\n        doc().ActiveView.Name, doc().ActiveView.ViewType))\n\n    # 7 ---------------------------------------------------------------------\n    passo(u\"07 overrides permitidos na vista\",\n          lambda: doc().ActiveView.AreGraphicsOverridesAllowed())\n\n    # 8 ---------------------------------------------------------------------\n    passo(u\"08 selecao\", lambda: u\"{0} elemento(s)\".format(\n        len(list(uidoc().Selection.GetElementIds()))))\n\n    # 9 ---------------------------------------------------------------------\n    passo(u\"09 BuiltInCategory\", lambda: u\"OST_Walls={0}, OST_Parts={1}\".format(\n        DB.BuiltInCategory.OST_Walls, DB.BuiltInCategory.OST_Parts))\n\n    # 10 --------------------------------------------------------------------\n    def _categoria():\n        cat = DB.Category.GetCategory(doc(), DB.BuiltInCategory.OST_Windows)\n        if cat is None:\n            return u\"GetCategory devolveu None (categoria ausente no modelo)\"\n        return u\"OST_Windows -> '{0}'\".format(cat.Name)\n    passo(u\"10 Category.GetCategory\", _categoria)\n\n    # 11 --------------------------------------------------------------------\n    def _ogs():\n        o = DB.OverrideGraphicSettings()\n        novo = hasattr(o, 'SetSurfaceForegroundPatternColor')\n        velho = hasattr(o, 'SetProjectionFillColor')\n        return u\"SetSurfaceForegroundPatternColor={0}, SetProjectionFillColor={1}\".format(\n            novo, velho)\n    passo(u\"11 OverrideGraphicSettings\", _ogs)\n\n    # 12 --------------------------------------------------------------------\n    passo(u\"12 DB.Color\", lambda: u\"(250,214,140) -> R={0} G={1} B={2}\".format(\n        DB.Color(250, 214, 140).Red, DB.Color(250, 214, 140).Green,\n        DB.Color(250, 214, 140).Blue))\n\n    # 13 --------------------------------------------------------------------\n    passo(u\"13 SpecTypeId.Reference.Material\",\n          lambda: u\"{0}\".format(DB.SpecTypeId.Reference.Material))\n\n    # 14 --------------------------------------------------------------------\n    def _elementid():\n        # nao usar getattr com default: isso esconde QUAL das duas existe.\n        # Value = Revit 2024+, IntegerValue = 2023 e anteriores (obsoleto depois).\n        eid = DB.ElementId(7)\n        achados = []\n        for nome in ('Value', 'IntegerValue'):\n            try:\n                achados.append(u\"{0}={1}\".format(nome, getattr(eid, nome)))\n            except Exception as e:\n                achados.append(u\"{0} indisponivel ({1})\".format(nome, type(e).__name__))\n        return u\", \".join(achados)\n    passo(u\"14 ElementId\", _elementid)\n\n    # 15 --------------------------------------------------------------------\n    passo(u\"15 isinstance com DB.Group\", lambda: u\"chamada aceita, objeto comum -> {0}\".format(\n        isinstance(object(), DB.Group)))\n\n    # 16 --------------------------------------------------------------------\n    def _primeiro():\n        ids = list(uidoc().Selection.GetElementIds())\n        if not ids:\n            return u\"nada selecionado (selecione algo e rode de novo)\"\n        el = doc().GetElement(ids[0])\n        if el is None:\n            return u\"GetCategory devolveu None para o id selecionado\"\n        try:\n            nome = el.Name\n        except Exception as e:\n            nome = u\"<Name lanca {0}: {1}>\".format(type(e).__name__, e)\n        try:\n            cat = el.Category.Name\n        except Exception as e:\n            cat = u\"<Category lanca {0}>\".format(type(e).__name__)\n        try:\n            bb = el.get_BoundingBox(None)\n            caixa = u\"ok\" if bb is not None else u\"None (sem bbox no modelo)\"\n        except Exception as e:\n            caixa = u\"<get_BoundingBox lanca {0}>\".format(type(e).__name__)\n        return u\"id={0} | nome={1} | categoria={2} | bbox={3}\".format(\n            ids[0], nome, cat, caixa)\n    passo(u\"16 primeiro selecionado\", _primeiro)\n\n    # 17 --------------------------------------------------------------------\n    def _versao():\n        app = DocumentManager.Instance.CurrentUIApplication.Application\n        return u\"Revit {0} (build {1})\".format(app.VersionNumber, app.VersionBuild)\n    passo(u\"17 versao do Revit\", _versao)\n\n    # 18 --------------------------------------------------------------------\n    def _transacao():\n        # abre e fecha sem alterar nada: so prova que o TransactionManager responde\n        TransactionManager.Instance.EnsureInTransaction(doc())\n        TransactionManager.Instance.TransactionTaskDone()\n        return u\"EnsureInTransaction + TransactionTaskDone responderam\"\n    passo(u\"18 transacao (sem alterar o modelo)\", _transacao)\n\netapas.append(u\"--- fim: {0} linhas, {1} falha(s) ---\".format(\n    len(etapas), len([e for e in etapas if e.startswith(u\"FALHOU\")])))\n\nOUT = etapas\n",
       "Engine": "CPython3",
       "EngineName": "CPython3",
       "VariableInputPorts": true,
-      "Id": "e97c01be-92a0-45e9-a03f-b7663df3935f",
+      "Id": "fd1d5076-afb8-42e4-976e-80eef6a24bc5",
       "Inputs": [],
       "Outputs": [
         {
-          "Id": "4cff98fe-7b57-457a-915d-d63ac5e8b657",
+          "Id": "92dfd396-d2d7-4108-9197-8dadeb83bb48",
           "Name": "OUT",
           "Description": "Result of the python script",
           "UsingDefaultValue": false,
@@ -35,10 +35,10 @@
     {
       "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
       "NodeType": "ExtensionNode",
-      "Id": "475ea225-3989-4762-abcc-8ccf38f26816",
+      "Id": "052c1860-2503-4b2e-91b6-3a4750c39836",
       "Inputs": [
         {
-          "Id": "59e01511-172f-4031-ac70-02ce6be3a31a",
+          "Id": "9fc37588-0cb5-45e6-ad05-02b3df996d74",
           "Name": "",
           "Description": "Node to show output from",
           "UsingDefaultValue": false,
@@ -49,7 +49,7 @@
       ],
       "Outputs": [
         {
-          "Id": "e19a6d84-26d3-4a1b-a6de-e255992cba88",
+          "Id": "8df0d2af-c237-45f7-8a19-4bf935276d68",
           "Name": "",
           "Description": "Node output",
           "UsingDefaultValue": false,
@@ -64,9 +64,9 @@
   ],
   "Connectors": [
     {
-      "Start": "4cff98fe-7b57-457a-915d-d63ac5e8b657",
-      "End": "59e01511-172f-4031-ac70-02ce6be3a31a",
-      "Id": "8a5e9c8c-c895-4128-8d3f-349f5245a9fb",
+      "Start": "92dfd396-d2d7-4108-9197-8dadeb83bb48",
+      "End": "9fc37588-0cb5-45e6-ad05-02b3df996d74",
+      "Id": "3ad02589-1bdc-4e95-8217-dd6b3ef282a8",
       "IsHidden": "False"
     }
   ],
@@ -108,7 +108,7 @@
     "ConnectorPins": [],
     "NodeViews": [
       {
-        "Id": "e97c01be-92a0-45e9-a03f-b7663df3935f",
+        "Id": "fd1d5076-afb8-42e4-976e-80eef6a24bc5",
         "Name": "Diagnostico",
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
@@ -118,13 +118,13 @@
         "Y": 0.0
       },
       {
-        "Id": "475ea225-3989-4762-abcc-8ccf38f26816",
+        "Id": "052c1860-2503-4b2e-91b6-3a4750c39836",
         "Name": "resultado",
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
         "Excluded": false,
         "ShowGeometry": true,
-        "X": 340.0,
+        "X": 360.0,
         "Y": 0.0
       }
     ],
