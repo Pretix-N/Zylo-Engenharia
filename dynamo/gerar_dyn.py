@@ -43,8 +43,8 @@ py = {
 
 cb_eixo  = code_block('"AUTO";', 'eixo da fileira: "AUTO", "X" ou "Y"')
 cb_modo  = code_block('"override";', 'modo: "override", "material", "paint" ou "limpar"')
-cb_casas = code_block('"gap";', 'casas: um numero (qtd de casas), "gap", "parametro" ou "trios"')
-cb_faixa = code_block('"EIXO";', 'eixo das 3 faixas na casa: "EIXO", "X", "Y", "Z" ou "AUTO"')
+cb_casas = code_block('"grupo";', 'casas: "grupo" (bloco do Revit), um numero, "gap", "parametro" ou "trios"')
+cb_faixa = code_block('"fachada";', 'cores na casa: "fachada" (cima/baixo/moldura) ou "EIXO"/"X"/"Y"/"Z"/"AUTO"')
 bl_exec  = boolean(False)
 
 nos = [cb_eixo, cb_modo, cb_casas, cb_faixa, bl_exec, py]
@@ -70,7 +70,7 @@ for n in nos:
 
 grafo = {
     "Uuid": g(), "IsCustomNode": False, "Description":
-        "Aplica 8 trios de cores em casas lado a lado: 3 faixas por casa, 1 cor por faixa.",
+        "8 trios de cores em casas lado a lado: parede de cima, parede de baixo e molduras.",
     "Name": "PintarFachadas",
     "ElementResolver": {"ResolutionMap": {}},
     "Inputs": [], "Outputs": [],

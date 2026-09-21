@@ -1,30 +1,38 @@
 # PintarFachadas — paleta de 8 trios em fachadas lado a lado (Dynamo / Revit)
 
-Cada **casa** recebe **exatamente 3 cores**, não importa de quantos elementos ela seja
-feita. A casa é repartida em **3 faixas** e a faixa inteira recebe uma cor do trio.
-A partir da casa 9 a paleta reinicia.
+Cada **casa** recebe **3 cores** do trio da vez:
+
+| Cor do trio | Vai para |
+|---|---|
+| cor 1 | parede **de cima** |
+| cor 2 | parede **de baixo** |
+| cor 3 | **molduras** das esquadrias |
+
+A partir da casa 9 a paleta reinicia (ciclo por módulo).
 
 | Arquivo | O que é |
 |---|---|
 | `PintarFachadas.dyn` | Grafo pronto: 4 Code Blocks + 1 Boolean + 1 nó Python. Abra e rode. |
 | `PintarFachadas.py` | O código do nó Python, versionado à parte para poder ser revisado/diffado. |
-| `gerar_dyn.py` | Regenera o `.dyn` depois que você editar o `.py`. Rode `python3 dynamo/gerar_dyn.py`. |
-| `teste_logica.py` | Testa HEX, detecção de casas, faixas e ciclo fora do Revit (stubs da API). |
+| `gerar_dyn.py` | Regenera o `.dyn` depois que você editar o `.py`. `python3 dynamo/gerar_dyn.py`. |
+| `teste_logica.py` | Testa HEX, detecção de casas, papéis e ciclo fora do Revit (stubs da API). |
 
 ---
 
-## O problema que esta versão resolve
+## Leia antes: a condição que o modelo precisa cumprir
 
-A primeira versão assumia **3 elementos por casa** e fatiava a lista ordenada de 3 em 3.
-Numa fachada real a casa tem 8, 12, 30 elementos — o trio escorregava por cima das
-divisas e cada casa saía multicolorida.
+O script classifica cada elemento pelo **centro do bounding box**. Consequência direta:
 
-Agora são dois passos independentes:
+> **Se a fachada da casa for UMA parede única do piso ao topo, não dá para pintar
+> em cima e embaixo com cores diferentes.** A parede inteira tem um centro só, cai
+> num lado só, e a casa sai com 2 cores em vez de 3.
 
-1. **Onde termina uma casa e começa a outra** (`casas`)
-2. **Repartir cada casa em 3 faixas** (`faixas`) — 1 cor por faixa, N elementos por faixa
+Para ter a faixa de cima e a de baixo você precisa de **dois elementos separados** —
+duas paredes empilhadas, ou a parede dividida em **Parts** (`Modify > Create Parts`,
+depois `Divide Parts` na altura da faixa). Não tem contorno: override gráfico atua no
+elemento inteiro, não em meia face.
 
-Uma casa com 30 elementos continua com 3 cores.
+O resumo avisa quando isso acontece: `AVISO: N casa(s) com algum papel vazio`.
 
 ---
 
@@ -34,60 +42,97 @@ Uma casa com 30 elementos continua com 3 cores.
 |---|---|---|
 | `eixo` | `"AUTO"`, `"X"`, `"Y"` — eixo em que a fileira se estende | `"AUTO"` |
 | `modo` | `"override"`, `"material"`, `"paint"`, `"limpar"` | `"override"` |
-| `casas` | um **número inteiro**, `"gap"`, `"parametro"`, `"trios"` | `"gap"` |
-| `faixas` | `"EIXO"`, `"X"`, `"Y"`, `"Z"`, `"AUTO"` | `"EIXO"` |
+| `casas` | `"grupo"`, um **número**, `"gap"`, `"parametro"`, `"trios"` | `"grupo"` |
+| `faixas` | `"fachada"`, `"EIXO"`, `"X"`, `"Y"`, `"Z"`, `"AUTO"` | `"fachada"` |
 | `executar` | `true` / `false` | `false` (simulação) |
 
 ### `casas` — como separar uma casa da outra
 
 | Valor | Como funciona | Quando usar |
 |---|---|---|
-| **número** (ex.: `24;`) | Divide a extensão total da fileira nesse número de fatias iguais. | **Casas geminadas** (encostadas) e de largura uniforme. É o modo mais previsível: você conta as casas na elevação e digita. |
-| `"gap"` | Quebra onde há vão livre maior que metade da largura típica do elemento. | Casas isoladas, com recuo visível entre elas. Se achar **uma casa só**, ele avisa — é sinal de que são geminadas: use o número. |
-| `"parametro"` | Agrupa pelo valor de um parâmetro de texto (`PARAM_GRUPO`, padrão `Comentários`). | O único 100% determinístico. Vale o trabalho de preencher se a fileira for irregular. |
+| **`"grupo"`** | Cada **Group (bloco)** do Revit é uma casa. | **Melhor opção.** Não depende de geometria, tolerância nem contagem. Selecione os blocos (ou os elementos dentro deles) e pronto. Elementos fora de bloco são reportados e descartados. |
+| **número** (ex.: `24;`) | Divide a extensão total da fileira nesse nº de fatias iguais. | Geminadas de largura uniforme, sem blocos. |
+| `"gap"` | Quebra onde há vão livre maior que metade da largura típica do elemento. | Casas isoladas com recuo. Avisa se achar uma casa só. |
+| `"parametro"` | Agrupa pelo valor de `PARAM_GRUPO` (padrão `Comentários`). | Fileira irregular, sem blocos. |
 | `"trios"` | Modo antigo: fatia de 3 em 3. | Só se cada casa tiver exatamente 3 elementos. |
 
 ### `faixas` — como as 3 cores se distribuem dentro da casa
 
-- `"EIXO"` (padrão) — mesmo eixo da fileira: **3 listras verticais** por casa.
-- `"Z"` — **3 faixas horizontais empilhadas** (térreo / meio / topo).
-- `"X"` / `"Y"` — força um eixo específico.
-- `"AUTO"` — escolhe o eixo de maior dispersão média dentro das casas.
+- **`"fachada"`** (padrão): cor1 = parede de cima, cor2 = parede de baixo,
+  cor3 = molduras das esquadrias.
+- `"Z"` / `"EIXO"` / `"X"` / `"Y"` / `"AUTO"`: modo geométrico antigo — 3 faixas
+  iguais ao longo do eixo, ignorando o papel do elemento.
 
-O método de repartição fica em `FAIXAS_METODO` no `.py`:
-`"extensao"` (padrão, divide a largura da casa em 3 partes iguais) ou
-`"quantil"` (as 3 faixas ficam com ~o mesmo número de elementos).
+---
+
+## O que conta como "moldura"
+
+Duas regras, nesta ordem:
+
+1. **Categoria** — `CATEGORIAS_MOLDURA` no `.py`, padrão `OST_Windows` e `OST_Doors`.
+2. **Palavra no nome** do elemento, do tipo, da família ou da categoria —
+   `PALAVRAS_MOLDURA`: `moldura`, `esquadria`, `marco`, `guarnic`, `peitoril`,
+   `verga`, `frame`, `trim`, `jamb`, `sill`, `casing`, `batente`.
+   A comparação ignora maiúsculas e acentos.
+
+Rodando em simulação, o resumo imprime o **inventário de categorias** da seleção:
+
+```
+Categorias na seleção:
+   Paredes: 288
+   Janelas: 96
+   Modelos genéricos: 48
+```
+
+É com essa lista que você ajusta as duas regras sem adivinhar. Se as molduras estiverem
+modeladas como Modelo Genérico chamado "Moldura 15", a regra 2 já pega. Se estiverem
+com outro nome, acrescente a palavra em `PALAVRAS_MOLDURA`.
+
+---
+
+## Onde a parede se divide entre cima e baixo
+
+`CORTE_ALTURA = 0.5` — fração da altura da casa. `0.6` faz a faixa de baixo ocupar 60%.
+A cota é calculada **por casa**, a partir da altura da própria parede (as molduras não
+entram na conta), então terreno em desnível não estraga o resultado.
+Se preferir um nível fixo, ponha a cota Z em pés em `CORTE_ABSOLUTO`.
+
+Para trocar qual cor vai para qual papel, reordene `PAPEL_DAS_CORES`:
+
+```python
+PAPEL_DAS_CORES = ["cima", "baixo", "moldura"]   # cor1, cor2, cor3
+```
 
 ---
 
 ## Como usar
 
-1. Abra o `.dyn` no Dynamo (Revit 2021+ / Dynamo 2.7+, engine CPython3).
-2. Vá para a **vista onde a cor deve aparecer**.
-3. **No Revit**, selecione os elementos das fachadas. O script lê a seleção do Revit,
-   não um nó de seleção do Dynamo. Grupos do Revit são expandidos automaticamente.
-4. Volte ao Dynamo, deixe `executar = false` e rode. **Nada é alterado.** Leia `OUT[0]`:
+1. No Revit, **agrupe cada casa em um bloco** (selecione os elementos da casa → `Create Group`).
+2. Abra o `.dyn` no Dynamo (Revit 2021+, engine CPython3).
+3. Vá para a **vista onde a cor deve aparecer**.
+4. **No Revit**, selecione os blocos das casas.
+5. No Dynamo, `executar = false` e rode. **Nada é alterado.** Leia `OUT[0]`:
 
 ```
 *** SIMULAÇÃO — ligue 'executar' para aplicar. ***
+Categorias na seleção:
+   Paredes: 288
+   Janelas: 96
 Eixo da fileira (AUTO) -> X  (dispersão X=1840.0 ft, Y=32.0 ft)
-Tolerância de vão automática: 2.00 ft (metade da largura típica do elemento).
-Faixas repartidas no eixo X (listras verticais)
-412 elemento(s) -> 24 casa(s) [vão entre casas] -> 3 faixas por casa -> trios 1..8 em ciclo.
-Distribuição casa -> total (faixa1/faixa2/faixa3):
-   casa 1: 17 elem (6/5/6)
-   casa 2: 18 elem (6/6/6)
+Repartição por papel: cor1=cima, cor2=baixo, cor3=moldura; corte da parede em 50% da altura.
+384 elemento(s) -> 24 casa(s) [blocos (Group) do Revit] -> 3 cores por casa -> trios 1..8 em ciclo.
+Distribuição casa -> total (papel: nº de elementos):
+   casa 1: 16 elem  (cima=6, baixo=6, moldura=4)
+   casa 2: 16 elem  (cima=6, baixo=6, moldura=4)
    ...
 ```
 
-A linha de **distribuição** é o que vale conferir: se as casas aparecerem com contagens
-coerentes entre si, a detecção acertou. Se aparecer `24 casa(s)` quando você tem 24
-casas, pode aplicar. Se aparecer `1 casa(s)` ou `180 casa(s)`, troque o `casas`.
+Confira: o número de casas bate? `moldura` tem elementos? `cima` e `baixo` estão
+ambos preenchidos? Se sim, pode aplicar.
 
-5. Vire `executar = true` e rode.
+6. `executar = true` e rode.
 
-Se o resultado ficar errado, `modo = "limpar"` com `executar = true` remove os overrides
-e a pintura dos elementos selecionados.
+Deu errado? `modo = "limpar"` com `executar = true` remove os overrides e a pintura.
 
 ---
 
@@ -95,20 +140,21 @@ e a pintura dos elementos selecionados.
 
 | Modo | O que faz | Limite |
 |---|---|---|
-| `override` | `View.SetElementOverrides` na vista ativa: preenchimento de superfície (hachura sólida), corte e linha. | **Só naquela vista.** Não vai para render, schedule ou Realista, e some se resetarem os overrides. Bom para estudo e prancha; ruim como informação de modelo. |
-| `material` | Cria/reusa materiais `ZYLO_FACHADA_<HEX>` e grava no parâmetro de material da instância. | **Parede comum não tem** parâmetro de material de instância — está no tipo. Funciona em Parts, modelos genéricos e famílias preparadas. Falhas são reportadas por elemento. |
-| `paint` | Cria os materiais e usa `Document.Paint` na face de fachada. | A única via paramétrica que funciona em parede sem duplicar tipo. Escolhe a face pela `DIRECAO_FACHADA` (padrão: −Y se a fileira corre em X). |
-| `limpar` | Remove overrides da vista e a pintura feita por este script. | — |
+| `override` | `View.SetElementOverrides` na vista ativa. | **Só naquela vista.** Não vai para render, schedule ou Realista. Bom para estudo e prancha. |
+| `material` | Cria/reusa materiais `ZYLO_FACHADA_<HEX>` no parâmetro de material da instância. | **Parede comum não tem** esse parâmetro na instância. Funciona em Parts, modelos genéricos e famílias preparadas. Falhas reportadas por elemento. |
+| `paint` | Cria os materiais e usa `Document.Paint` na face de fachada. | Única via paramétrica em parede sem duplicar tipo. Face escolhida por `DIRECAO_FACHADA`. |
+| `limpar` | Remove overrides e a pintura feita por este script. | — |
 
-Recomendação: valide a separação das casas com `override` (reversível e barato) antes
-de partir para `paint`.
+Valide a separação com `override` antes de partir para `paint`.
 
 ---
 
 ## Ajustes no `.py`
 
-`FAIXAS_METODO`, `INVERTER_ORDEM_FAIXAS`, `INVERTER_ORDEM_CASAS`, `TOLERANCIA_GAP`,
-`PARAM_GRUPO`, `CATEGORIAS_FALLBACK`, `DIRECAO_FACHADA`, `PREFIXO_MATERIAL`.
+`PAPEL_DAS_CORES`, `CORTE_ALTURA`, `CORTE_ABSOLUTO`, `CATEGORIAS_MOLDURA`,
+`PALAVRAS_MOLDURA`, `FAIXAS_METODO`, `INVERTER_ORDEM_FAIXAS`, `INVERTER_ORDEM_CASAS`,
+`TOLERANCIA_GAP`, `PARAM_GRUPO`, `CATEGORIAS_FALLBACK`, `DIRECAO_FACHADA`,
+`PREFIXO_MATERIAL`.
 
 Depois de editar, rode `python3 dynamo/gerar_dyn.py` para regenerar o `.dyn`
 (ou cole o `.py` direto no nó Python dentro do Dynamo).
@@ -117,13 +163,12 @@ Depois de editar, rode `python3 dynamo/gerar_dyn.py` para regenerar o `.dyn`
 
 ## Por que não dá para fazer isso só com nós OOTB
 
-O grafo `List.SortByKey` + `List.Chop(3)` + `List.Cycle` + `Element.OverrideColorInView`
-resolve o caso "3 elementos por casa" e nada além dele. Ele não tem como:
+`List.SortByKey` + `List.Chop(3)` + `List.Cycle` + `Element.OverrideColorInView` resolve
+"3 elementos por casa" e nada além. Não tem como, em nós:
 
-- descobrir onde uma casa termina (precisa de clusterização por vão ou de fatiar a
-  extensão total, nenhum dos dois é um nó);
-- repartir N elementos em 3 faixas por coordenada;
-- desempatar a ordem quando os elementos da casa compartilham a mesma coordenada.
+- usar o Group como fronteira da casa;
+- classificar elemento como moldura por categoria ou nome;
+- calcular a cota de corte por casa e separar parede de cima de parede de baixo.
 
-`List.Chop` fatia por contagem, não por posição — e é exatamente isso que faz as cores
-escorregarem quando a casa tem um número variável de elementos.
+`List.Chop` fatia por **contagem**, não por posição nem por papel — é o que fazia as
+cores escorregarem quando a casa tinha um número variável de elementos.
