@@ -191,6 +191,15 @@ def normalizar(texto):
     return t
 
 
+def nome_seguro(elemento):
+    """Element.Name lança exceção para alguns tipos de elemento no Revit —
+    e isso, dentro de um laço sobre todos os elementos, mata o script inteiro."""
+    try:
+        return elemento.Name
+    except Exception:
+        return u"(sem nome)"
+
+
 def id_valor(element_id):
     """ElementId.Value (Revit 2024+) ou .IntegerValue (anteriores)."""
     for nome in ('Value', 'IntegerValue'):
@@ -278,7 +287,7 @@ def _chave_do_grupo(elemento):
 def textos_do_elemento(elemento, doc):
     """Nome do elemento, do tipo, da família e da categoria — para classificar."""
     textos = []
-    for getter in (lambda: elemento.Name,
+    for getter in (lambda: nome_seguro(elemento),
                    lambda: elemento.Category.Name):
         try:
             textos.append(getter())
@@ -810,227 +819,239 @@ casas_pedido = _entrada(2, "grupo")
 faixas_pedido = _entrada(3, "fachada")
 executar = bool(_entrada(4, False))
 
-doc = DocumentManager.Instance.CurrentDBDocument
-uidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument
-vista = doc.ActiveView
-
+# resumo e detalhe ficam no modulo para que o relatorio sobreviva a um erro
 resumo = []
 detalhe = []
 
-MODOS = ("override", "material", "paint", "limpar")
 
-if modo not in MODOS:
-    resumo.append(u"ERRO: modo '{0}' desconhecido. Use: {1}.".format(modo, ", ".join(MODOS)))
-    OUT = [resumo, detalhe]
-else:
-    dados = coletar(doc, uidoc, resumo)
+def principal():
+    """Todo o trabalho. Devolve [resumo, detalhe]."""
+    doc = DocumentManager.Instance.CurrentDBDocument
+    uidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument
+    vista = doc.ActiveView
 
-    if not dados:
-        resumo.append(u"ERRO: nenhum elemento válido. Selecione as casas no Revit "
-                      u"e rode de novo.")
-        OUT = [resumo, detalhe]
+    MODOS = ("override", "material", "paint", "limpar")
 
-    elif modo == "limpar":
-        elementos = [d['el'] for d in dados]
-        if not executar:
-            resumo.append(u"*** SIMULAÇÃO — ligue 'executar' para limpar de verdade. ***")
-            resumo.append(u"Limparia overrides e pintura de {0} elemento(s).".format(
-                len(elementos)))
-        else:
-            TransactionManager.Instance.EnsureInTransaction(doc)
-            n = limpar(doc, vista, elementos)
-            TransactionManager.Instance.TransactionTaskDone()
-            resumo.append(u"Overrides removidos de {0} elemento(s) na vista '{1}'.".format(
-                n, vista.Name))
-        OUT = [resumo, detalhe]
-
+    if modo not in MODOS:
+        resumo.append(u"ERRO: modo '{0}' desconhecido. Use: {1}.".format(modo, ", ".join(MODOS)))
+        return [resumo, detalhe]
     else:
-        inventario(dados, resumo)
-        eixo = escolher_eixo(dados, eixo_pedido, resumo)
+        dados = coletar(doc, uidoc, resumo)
 
-        # --- passo 1: separar as casas ---
-        try:
-            numero_casas = int(casas_pedido)
-        except (TypeError, ValueError):
-            numero_casas = None
+        if not dados:
+            resumo.append(u"ERRO: nenhum elemento válido. Selecione as casas no Revit "
+                          u"e rode de novo.")
+            return [resumo, detalhe]
 
-        if numero_casas is not None and numero_casas > 0:
-            grupos = casas_por_numero(dados, eixo, numero_casas, resumo)
-            metodo_casas = u"{0} casas iguais".format(numero_casas)
-        else:
-            chave = normalizar(str(casas_pedido)).strip()
-            if chave == "grupo":
-                grupos = casas_por_grupo(dados, eixo, resumo)
-                metodo_casas = u"blocos (Group) do Revit"
-            elif chave == "parametro":
-                grupos = casas_por_parametro(dados, eixo, resumo)
-                metodo_casas = u"parâmetro '{0}'".format(PARAM_GRUPO)
-            elif chave == "trios":
-                grupos = casas_por_trios(dados, eixo, resumo)
-                metodo_casas = u"trios (3 elementos por casa)"
+        elif modo == "limpar":
+            elementos = [d['el'] for d in dados]
+            if not executar:
+                resumo.append(u"*** SIMULAÇÃO — ligue 'executar' para limpar de verdade. ***")
+                resumo.append(u"Limparia overrides e pintura de {0} elemento(s).".format(
+                    len(elementos)))
             else:
-                grupos = casas_por_gap(dados, eixo, resumo)
-                metodo_casas = u"vão entre casas"
+                TransactionManager.Instance.EnsureInTransaction(doc)
+                n = limpar(doc, vista, elementos)
+                TransactionManager.Instance.TransactionTaskDone()
+                resumo.append(u"Overrides removidos de {0} elemento(s) na vista '{1}'.".format(
+                    n, nome_seguro(vista)))
+            return [resumo, detalhe]
 
-        grupos = [g for g in grupos if g]
-
-        if not grupos:
-            OUT = [resumo, detalhe]
         else:
-            grupos.sort(key=lambda g: min(d['c'][eixo] for d in g))
-            if INVERTER_ORDEM_CASAS:
-                grupos.reverse()
+            inventario(dados, resumo)
+            eixo = escolher_eixo(dados, eixo_pedido, resumo)
 
-            # --- passo 2: repartir cada casa ---
-            por_papel = normalizar(str(faixas_pedido)).strip() == "fachada"
+            # --- passo 1: separar as casas ---
+            try:
+                numero_casas = int(casas_pedido)
+            except (TypeError, ValueError):
+                numero_casas = None
 
-            ids_moldura = set()
-            if por_papel:
-                for bic in CATEGORIAS_MOLDURA:
-                    try:
-                        cat = DB.Category.GetCategory(doc, bic)
-                        if cat is not None:
-                            ids_moldura.add(id_valor(cat.Id))
-                    except Exception:
-                        continue
-                resumo.append(u"Repartição por papel: cor1={0}, cor2={1}, cor3={2}; "
-                              u"corte da parede em {3:.0f}% da altura.".format(
-                                  PAPEL_DAS_CORES[0], PAPEL_DAS_CORES[1],
-                                  PAPEL_DAS_CORES[2], float(CORTE_ALTURA) * 100))
+            if numero_casas is not None and numero_casas > 0:
+                grupos = casas_por_numero(dados, eixo, numero_casas, resumo)
+                metodo_casas = u"{0} casas iguais".format(numero_casas)
             else:
-                eixo_faixa = escolher_eixo_faixa(faixas_pedido, eixo, grupos, resumo)
+                chave = normalizar(str(casas_pedido)).strip()
+                if chave == "grupo":
+                    grupos = casas_por_grupo(dados, eixo, resumo)
+                    metodo_casas = u"blocos (Group) do Revit"
+                elif chave == "parametro":
+                    grupos = casas_por_parametro(dados, eixo, resumo)
+                    metodo_casas = u"parâmetro '{0}'".format(PARAM_GRUPO)
+                elif chave == "trios":
+                    grupos = casas_por_trios(dados, eixo, resumo)
+                    metodo_casas = u"trios (3 elementos por casa)"
+                else:
+                    grupos = casas_por_gap(dados, eixo, resumo)
+                    metodo_casas = u"vão entre casas"
 
-            plano = []
-            distribuicao = []
-            stats = {}
-            for indice_casa, grupo in enumerate(grupos):
-                trio_idx = indice_casa % len(PALETA_HEX)      # o ciclo da paleta
-                trio = PALETA_HEX[trio_idx]
+            grupos = [g for g in grupos if g]
+
+            if not grupos:
+                return [resumo, detalhe]
+            else:
+                grupos.sort(key=lambda g: min(d['c'][eixo] for d in g))
+                if INVERTER_ORDEM_CASAS:
+                    grupos.reverse()
+
+                # --- passo 2: repartir cada casa ---
+                por_papel = normalizar(str(faixas_pedido)).strip() == "fachada"
+
+                ids_moldura = set()
+                if por_papel:
+                    for bic in CATEGORIAS_MOLDURA:
+                        try:
+                            cat = DB.Category.GetCategory(doc, bic)
+                            if cat is not None:
+                                ids_moldura.add(id_valor(cat.Id))
+                        except Exception:
+                            continue
+                    resumo.append(u"Repartição por papel: cor1={0}, cor2={1}, cor3={2}; "
+                                  u"corte da parede em {3:.0f}% da altura.".format(
+                                      PAPEL_DAS_CORES[0], PAPEL_DAS_CORES[1],
+                                      PAPEL_DAS_CORES[2], float(CORTE_ALTURA) * 100))
+                else:
+                    eixo_faixa = escolher_eixo_faixa(faixas_pedido, eixo, grupos, resumo)
+
+                plano = []
+                distribuicao = []
+                stats = {}
+                for indice_casa, grupo in enumerate(grupos):
+                    trio_idx = indice_casa % len(PALETA_HEX)      # o ciclo da paleta
+                    trio = PALETA_HEX[trio_idx]
+
+                    if por_papel:
+                        papeis = repartir_fachada(grupo, ids_moldura, stats)
+                        partes = [(PAPEL_DAS_CORES[k], papeis.get(PAPEL_DAS_CORES[k], []))
+                                  for k in range(3)]
+                    else:
+                        faixas = repartir_em_faixas(grupo, eixo_faixa)
+                        if INVERTER_ORDEM_FAIXAS:
+                            faixas.reverse()
+                        partes = [(u"faixa{0}".format(k + 1), faixas[k]) for k in range(3)]
+
+                    exemplo = u""
+                    for _, itens in partes:
+                        if itens:
+                            exemplo = nome_seguro(itens[0]['el'])
+                            break
+                    distribuicao.append((indice_casa + 1, len(grupo),
+                                         [(nome, len(itens)) for nome, itens in partes],
+                                         exemplo))
+                    for k, (nome, itens) in enumerate(partes):
+                        for d in itens:
+                            plano.append({'casa': indice_casa + 1, 'trio': trio_idx + 1,
+                                          'papel': nome, 'hex': trio[k], 'el': d['el']})
+
+                resumo.append(u"{0} elemento(s) -> {1} casa(s) [{2}] -> 3 cores por casa "
+                              u"-> trios 1..8 em ciclo.".format(
+                                  len(dados), len(grupos), metodo_casas))
+                resumo.append(u"Modo: {0} | eixo da fileira: {1}".format(modo, "XYZ"[eixo]))
 
                 if por_papel:
-                    papeis = repartir_fachada(grupo, ids_moldura, stats)
-                    partes = [(PAPEL_DAS_CORES[k], papeis.get(PAPEL_DAS_CORES[k], []))
-                              for k in range(3)]
-                else:
-                    faixas = repartir_em_faixas(grupo, eixo_faixa)
-                    if INVERTER_ORDEM_FAIXAS:
-                        faixas.reverse()
-                    partes = [(u"faixa{0}".format(k + 1), faixas[k]) for k in range(3)]
+                    resumo.append(u"Como cada elemento foi classificado: "
+                                  u"moldura por categoria={0}, moldura por nome={1}, "
+                                  u"parede por nome={2}, parede pela cota de corte={3}, "
+                                  u"parede redividida pela mediana={4}.".format(
+                                      stats.get("moldura_categoria", 0),
+                                      stats.get("moldura_nome", 0),
+                                      stats.get("parede_nome", 0),
+                                      stats.get("parede_geom", 0),
+                                      stats.get("parede_equilibrada", 0)))
 
-                exemplo = u""
-                for _, itens in partes:
-                    if itens:
-                        try:
-                            exemplo = itens[0]['el'].Name
-                        except Exception:
-                            exemplo = u"?"
-                        break
-                distribuicao.append((indice_casa + 1, len(grupo),
-                                     [(nome, len(itens)) for nome, itens in partes],
-                                     exemplo))
-                for k, (nome, itens) in enumerate(partes):
-                    for d in itens:
-                        plano.append({'casa': indice_casa + 1, 'trio': trio_idx + 1,
-                                      'papel': nome, 'hex': trio[k], 'el': d['el']})
+                # quais papéis ficaram vazios, e em quantas casas — é o que diz se o
+                # problema é a regra de classificação ou a geometria do modelo
+                faltando = {}
+                for c, _, partes, _ in distribuicao:
+                    for nome, q in partes:
+                        if q == 0:
+                            faltando.setdefault(nome, []).append(c)
+                if faltando:
+                    resumo.append(u"AVISO: papéis vazios (essas casas mostram menos de 3 cores):")
+                    for nome in sorted(faltando):
+                        lista = faltando[nome]
+                        resumo.append(u"   sem '{0}': {1} casa(s) -> {2}{3}".format(
+                            nome, len(lista), ", ".join([str(c) for c in lista[:12]]),
+                            u" ..." if len(lista) > 12 else u""))
 
-            resumo.append(u"{0} elemento(s) -> {1} casa(s) [{2}] -> 3 cores por casa "
-                          u"-> trios 1..8 em ciclo.".format(
-                              len(dados), len(grupos), metodo_casas))
-            resumo.append(u"Modo: {0} | eixo da fileira: {1}".format(modo, "XYZ"[eixo]))
-
-            if por_papel:
-                resumo.append(u"Como cada elemento foi classificado: "
-                              u"moldura por categoria={0}, moldura por nome={1}, "
-                              u"parede por nome={2}, parede pela cota de corte={3}, "
-                              u"parede redividida pela mediana={4}.".format(
-                                  stats.get("moldura_categoria", 0),
-                                  stats.get("moldura_nome", 0),
-                                  stats.get("parede_nome", 0),
-                                  stats.get("parede_geom", 0),
-                                  stats.get("parede_equilibrada", 0)))
-
-            # quais papéis ficaram vazios, e em quantas casas — é o que diz se o
-            # problema é a regra de classificação ou a geometria do modelo
-            faltando = {}
-            for c, _, partes, _ in distribuicao:
-                for nome, q in partes:
-                    if q == 0:
-                        faltando.setdefault(nome, []).append(c)
-            if faltando:
-                resumo.append(u"AVISO: papéis vazios (essas casas mostram menos de 3 cores):")
-                for nome in sorted(faltando):
-                    lista = faltando[nome]
-                    resumo.append(u"   sem '{0}': {1} casa(s) -> {2}{3}".format(
-                        nome, len(lista), ", ".join([str(c) for c in lista[:12]]),
-                        u" ..." if len(lista) > 12 else u""))
-
-            resumo.append(u"Distribuição casa -> total (papel: nº de elementos):")
-            for c, total, partes, exemplo in distribuicao[:15]:
-                resumo.append(u"   casa {0}: {1} elem  ({2})  ex.: {3}".format(
-                    c, total, ", ".join([u"{0}={1}".format(n, q) for n, q in partes]),
-                    exemplo[:60]))
-            if len(distribuicao) > 15:
-                resumo.append(u"   ... mais {0} casa(s)".format(len(distribuicao) - 15))
-
-            for p in plano:
-                detalhe.append([p['casa'], p['trio'], p['papel'], p['hex'],
-                                id_valor(p['el'].Id), p['el'].Name])
-
-            if not executar:
-                resumo.insert(0, u"*** SIMULAÇÃO — ligue 'executar' para aplicar. ***")
-                OUT = [resumo, detalhe]
-            elif modo == "override" and not vista.AreGraphicsOverridesAllowed():
-                resumo.append(u"ERRO: a vista '{0}' não aceita sobrescrita de "
-                              u"gráficos.".format(vista.Name))
-                OUT = [resumo, detalhe]
-            else:
-                if DIRECAO_FACHADA:
-                    direcao = tuple(DIRECAO_FACHADA)
-                else:
-                    direcao = (0.0, -1.0, 0.0) if eixo == 0 else (-1.0, 0.0, 0.0)
-
-                TransactionManager.Instance.EnsureInTransaction(doc)
-                hachura = id_hachura_solida(doc)
-                cache_mat = {}
-                ok, falhas = 0, []
+                resumo.append(u"Distribuição casa -> total (papel: nº de elementos):")
+                for c, total, partes, exemplo in distribuicao[:15]:
+                    resumo.append(u"   casa {0}: {1} elem  ({2})  ex.: {3}".format(
+                        c, total, ", ".join([u"{0}={1}".format(n, q) for n, q in partes]),
+                        exemplo[:60]))
+                if len(distribuicao) > 15:
+                    resumo.append(u"   ... mais {0} casa(s)".format(len(distribuicao) - 15))
 
                 for p in plano:
-                    el = p['el']
-                    try:
-                        if modo == "override":
-                            vista.SetElementOverrides(
-                                el.Id, montar_override(cor_revit(p['hex']), hachura))
-                            ok += 1
-                        elif modo == "material":
-                            mat = obter_material(doc, p['hex'], cache_mat, hachura)
-                            if aplicar_material(el, mat):
+                    detalhe.append([p['casa'], p['trio'], p['papel'], p['hex'],
+                                    id_valor(p['el'].Id), nome_seguro(p['el'])])
+
+                if not executar:
+                    resumo.insert(0, u"*** SIMULAÇÃO — ligue 'executar' para aplicar. ***")
+                    return [resumo, detalhe]
+                elif modo == "override" and not vista.AreGraphicsOverridesAllowed():
+                    resumo.append(u"ERRO: a vista '{0}' não aceita sobrescrita de "
+                                  u"gráficos.".format(nome_seguro(vista)))
+                    return [resumo, detalhe]
+                else:
+                    if DIRECAO_FACHADA:
+                        direcao = tuple(DIRECAO_FACHADA)
+                    else:
+                        direcao = (0.0, -1.0, 0.0) if eixo == 0 else (-1.0, 0.0, 0.0)
+
+                    TransactionManager.Instance.EnsureInTransaction(doc)
+                    hachura = id_hachura_solida(doc)
+                    cache_mat = {}
+                    ok, falhas = 0, []
+
+                    for p in plano:
+                        el = p['el']
+                        try:
+                            if modo == "override":
+                                vista.SetElementOverrides(
+                                    el.Id, montar_override(cor_revit(p['hex']), hachura))
                                 ok += 1
-                            else:
-                                falhas.append((id_valor(el.Id),
-                                               u"sem parâmetro de material editável"))
-                        else:  # paint
-                            mat = obter_material(doc, p['hex'], cache_mat, hachura)
-                            faces = faces_da_fachada(el, direcao)
-                            if not faces:
-                                falhas.append((id_valor(el.Id), u"nenhuma face de fachada"))
-                            else:
-                                for face in faces:
-                                    try:
-                                        if doc.IsPainted(el.Id, face):
-                                            doc.RemovePaint(el.Id, face)
-                                    except Exception:
-                                        pass
-                                    doc.Paint(el.Id, face, mat.Id)
-                                ok += 1
-                    except Exception as erro:
-                        falhas.append((id_valor(el.Id), str(erro)))
+                            elif modo == "material":
+                                mat = obter_material(doc, p['hex'], cache_mat, hachura)
+                                if aplicar_material(el, mat):
+                                    ok += 1
+                                else:
+                                    falhas.append((id_valor(el.Id),
+                                                   u"sem parâmetro de material editável"))
+                            else:  # paint
+                                mat = obter_material(doc, p['hex'], cache_mat, hachura)
+                                faces = faces_da_fachada(el, direcao)
+                                if not faces:
+                                    falhas.append((id_valor(el.Id), u"nenhuma face de fachada"))
+                                else:
+                                    for face in faces:
+                                        try:
+                                            if doc.IsPainted(el.Id, face):
+                                                doc.RemovePaint(el.Id, face)
+                                        except Exception:
+                                            pass
+                                        doc.Paint(el.Id, face, mat.Id)
+                                    ok += 1
+                        except Exception as erro:
+                            falhas.append((id_valor(el.Id), str(erro)))
 
-                TransactionManager.Instance.TransactionTaskDone()
+                    TransactionManager.Instance.TransactionTaskDone()
 
-                resumo.append(u"Aplicado em {0} elemento(s).".format(ok))
-                if falhas:
-                    resumo.append(u"{0} falha(s):".format(len(falhas)))
-                    for eid, msg in falhas[:20]:
-                        resumo.append(u"   id {0}: {1}".format(eid, msg))
+                    resumo.append(u"Aplicado em {0} elemento(s).".format(ok))
+                    if falhas:
+                        resumo.append(u"{0} falha(s):".format(len(falhas)))
+                        for eid, msg in falhas[:20]:
+                            resumo.append(u"   id {0}: {1}".format(eid, msg))
 
-                OUT = [resumo, detalhe]
+                    return [resumo, detalhe]
+
+
+try:
+    OUT = principal()
+except Exception:
+    # sem isto, qualquer erro faz o no devolver null e voce fica sem pista
+    import traceback
+    resumo.append(u"=== ERRO NAO TRATADO — copie o bloco abaixo ===")
+    for _l in traceback.format_exc().splitlines():
+        resumo.append(_l)
+    OUT = [resumo, detalhe]

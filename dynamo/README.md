@@ -16,6 +16,7 @@ A partir da casa 9 a paleta reinicia (ciclo por módulo).
 | `PintarFachadas.py` | O código do nó Python, versionado à parte para poder ser revisado/diffado. |
 | `gerar_dyn.py` | Regenera o `.dyn` depois que você editar o `.py`. `python3 dynamo/gerar_dyn.py`. |
 | `teste_logica.py` | Testa HEX, detecção de casas, papéis e ciclo fora do Revit (stubs da API). |
+| `teste_integracao.py` | Roda o script **inteiro** contra um Revit falso, em 13 cenários, para pegar erro de execução que os testes de função pura não pegam. |
 
 ---
 
@@ -128,6 +129,23 @@ Para trocar qual cor vai para qual papel, reordene `PAPEL_DAS_CORES`:
 ```python
 PAPEL_DAS_CORES = ["cima", "baixo", "moldura"]   # cor1, cor2, cor3
 ```
+
+---
+
+## Se o nó der erro
+
+O script inteiro roda dentro de um `try`. Qualquer exceção não tratada vira relatório
+em `OUT[0]`, com o traceback completo, em vez de o nó devolver `null`:
+
+```
+=== ERRO NAO TRATADO — copie o bloco abaixo ===
+Traceback (most recent call last):
+  File "PintarFachadas.py", line ...
+```
+
+Se mesmo assim o Watch mostrar `null`, o erro é anterior ao `try` (import do `clr`,
+engine errada no nó). Nesse caso a mensagem está no ⚠ do próprio nó Python: passe o
+mouse em cima.
 
 ---
 
