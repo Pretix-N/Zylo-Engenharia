@@ -17,6 +17,7 @@ A partir da casa 9 a paleta reinicia (ciclo por módulo).
 | `gerar_dyn.py` | Regenera o `.dyn` depois que você editar o `.py`. `python3 dynamo/gerar_dyn.py`. |
 | `teste_logica.py` | Testa HEX, detecção de casas, papéis e ciclo fora do Revit (stubs da API). |
 | `teste_integracao.py` | Roda o script **inteiro** contra um Revit falso, em 13 cenários, para pegar erro de execução que os testes de função pura não pegam. |
+| `Diagnostico.dyn` / `.py` | Grafo de uma página só, sem entradas, que testa o ambiente do nó Python etapa por etapa. Use quando o nó principal devolver `null`. |
 
 ---
 
@@ -144,8 +145,26 @@ Traceback (most recent call last):
 ```
 
 Se mesmo assim o Watch mostrar `null`, o erro é anterior ao `try` (import do `clr`,
-engine errada no nó). Nesse caso a mensagem está no ⚠ do próprio nó Python: passe o
-mouse em cima.
+engine errada, ambiente do nó). Dois caminhos:
+
+1. **Clique no botão `⚠ 1`** na barra inferior do Dynamo (não passe o mouse — clique).
+   Ele pula para o nó com aviso e abre a mensagem. Em Dynamo com avisos descartados,
+   é a única forma de ver o texto.
+2. **Abra o `Diagnostico.dyn`** e rode. Ele não tem entradas e cada etapa roda no seu
+   próprio `try`, então sempre devolve resultado. A saída diz exatamente onde para:
+
+```
+OK      01 python: 3.9.12 ...
+OK      02 acentos: ação, coração, portão, área — em dash
+OK      03 clr + AddReference
+OK      04 imports Revit
+OK      05 documento: NOME_DO_ARQUIVO
+OK      06 vista ativa: Elevação Sul  /  tipo Elevation
+FALHOU  13 SpecTypeId: AttributeError: ...
+```
+
+Se o `Diagnostico.dyn` também devolver `null`, o problema não é o script: é o nó
+Python ou a engine da sua instalação.
 
 ---
 

@@ -1,0 +1,136 @@
+{
+  "Uuid": "5b07eabe-8f3c-4e38-a907-e05a7963155e",
+  "IsCustomNode": false,
+  "Description": "Diagnostico do no Python: cada etapa num try proprio.",
+  "Name": "Diagnostico",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "NodeType": "PythonScriptNode",
+      "Code": "# -*- coding: utf-8 -*-\n\"\"\"Diagnóstico do nó Python do Dynamo.\n\nNenhuma etapa pode derrubar as outras: cada uma tem seu próprio try.\nSe ESTE nó também devolver null, o problema é o nó/engine, não o script.\n\"\"\"\n\netapas = []\nDB = None\nDocumentManager = None\n\n\ndef passo(rotulo, fn):\n    try:\n        etapas.append(u\"OK      {0}: {1}\".format(rotulo, fn()))\n    except Exception as erro:\n        etapas.append(u\"FALHOU  {0}: {1}: {2}\".format(rotulo, type(erro).__name__, erro))\n\n\ntry:\n    import sys\n    etapas.append(u\"OK      01 python: {0}\".format(sys.version.replace(\"\\n\", \" \")))\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  01 python: {0}\".format(erro))\n\ntry:\n    etapas.append(u\"OK      02 acentos: ação, coração, portão, área — em dash\")\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  02 acentos: {0}\".format(erro))\n\ntry:\n    import clr\n    clr.AddReference('RevitAPI')\n    clr.AddReference('RevitServices')\n    etapas.append(u\"OK      03 clr + AddReference\")\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  03 clr: {0}: {1}\".format(type(erro).__name__, erro))\n\ntry:\n    import Autodesk.Revit.DB as _DB\n    from RevitServices.Persistence import DocumentManager as _DM\n    from RevitServices.Transactions import TransactionManager as _TM\n    DB, DocumentManager = _DB, _DM\n    etapas.append(u\"OK      04 imports Revit\")\nexcept Exception as erro:\n    etapas.append(u\"FALHOU  04 imports Revit: {0}: {1}\".format(type(erro).__name__, erro))\n\nif DB is not None and DocumentManager is not None:\n    passo(u\"05 documento\", lambda: DocumentManager.Instance.CurrentDBDocument.Title)\n    passo(u\"06 vista ativa\", lambda: u\"{0}  /  tipo {1}\".format(\n        DocumentManager.Instance.CurrentDBDocument.ActiveView.Name,\n        DocumentManager.Instance.CurrentDBDocument.ActiveView.ViewType))\n    passo(u\"07 overrides na vista\", lambda:\n          DocumentManager.Instance.CurrentDBDocument.ActiveView.AreGraphicsOverridesAllowed())\n    passo(u\"08 seleção\", lambda: u\"{0} elemento(s)\".format(len(list(\n        DocumentManager.Instance.CurrentUIApplication\n        .ActiveUIDocument.Selection.GetElementIds()))))\n    passo(u\"09 BuiltInCategory\", lambda: u\"{0}, {1}\".format(\n        DB.BuiltInCategory.OST_Walls, DB.BuiltInCategory.OST_Parts))\n    passo(u\"10 Category.GetCategory\", lambda: DB.Category.GetCategory(\n        DocumentManager.Instance.CurrentDBDocument,\n        DB.BuiltInCategory.OST_Windows).Name)\n    passo(u\"11 OverrideGraphicSettings\", lambda: u\"criado, tem \"\n          u\"SetSurfaceForegroundPatternColor={0}\".format(\n              hasattr(DB.OverrideGraphicSettings(), 'SetSurfaceForegroundPatternColor')))\n    passo(u\"12 DB.Color\", lambda: u\"{0}\".format(DB.Color(250, 214, 140)))\n    passo(u\"13 SpecTypeId\", lambda: u\"{0}\".format(DB.SpecTypeId.Reference.Material))\n    passo(u\"14 ElementId.Value\", lambda: u\"{0}\".format(\n        getattr(DB.ElementId(7), 'Value', getattr(DB.ElementId(7), 'IntegerValue', '?'))))\n    passo(u\"15 isinstance DB.Group\", lambda: isinstance(object(), DB.Group))\n\n    # o que o script de verdade faz no primeiro passo\n    def _primeiro_elemento():\n        doc = DocumentManager.Instance.CurrentDBDocument\n        uidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\n        ids = list(uidoc.Selection.GetElementIds())\n        if not ids:\n            return u\"nada selecionado\"\n        el = doc.GetElement(ids[0])\n        bb = el.get_BoundingBox(None)\n        try:\n            nome = el.Name\n        except Exception as e:\n            nome = u\"<Name lança {0}>\".format(type(e).__name__)\n        return u\"id={0} nome={1} categoria={2} bbox={3}\".format(\n            ids[0], nome, el.Category.Name, u\"ok\" if bb is not None else u\"None\")\n    passo(u\"16 primeiro selecionado\", _primeiro_elemento)\n\netapas.append(u\"--- fim do diagnóstico, {0} etapas ---\".format(len(etapas)))\nOUT = etapas\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "e97c01be-92a0-45e9-a03f-b7663df3935f",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "4cff98fe-7b57-457a-915d-d63ac5e8b657",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "475ea225-3989-4762-abcc-8ccf38f26816",
+      "Inputs": [
+        {
+          "Id": "59e01511-172f-4031-ac70-02ce6be3a31a",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "e19a6d84-26d3-4a1b-a6de-e255992cba88",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output."
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "4cff98fe-7b57-457a-915d-d63ac5e8b657",
+      "End": "59e01511-172f-4031-ac70-02ce6be3a31a",
+      "Id": "8a5e9c8c-c895-4128-8d3f-349f5245a9fb",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": false,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.13.1.3887",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "e97c01be-92a0-45e9-a03f-b7663df3935f",
+        "Name": "Diagnostico",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "475ea225-3989-4762-abcc-8ccf38f26816",
+        "Name": "resultado",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 340.0,
+        "Y": 0.0
+      }
+    ],
+    "Annotations": [],
+    "X": 120.0,
+    "Y": 120.0,
+    "Zoom": 1.0
+  }
+}
