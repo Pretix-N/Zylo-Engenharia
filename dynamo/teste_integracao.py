@@ -60,11 +60,20 @@ class Elem(object):
     def LookupParameter(self, n): return self._pars.get(n)
 
 
+class TipoGrupo(object):
+    def __init__(self, eid, marca):
+        self.Id, self.Name, self._marca = Id(eid), "TipoCasa%s" % marca, str(marca)
+    def get_Parameter(self, bip):
+        return Par(self._marca) if bip == "TYPEMARK" else None
+    def LookupParameter(self, n): return None
+
+
 class Group(Elem):
-    def __init__(self, eid, membros, bb):
+    def __init__(self, eid, membros, bb, tipo=None):
         Elem.__init__(self, eid, "Grupo %s" % eid, Cat(-2, "Grupos"), bb)
-        self._m = membros
+        self._m, self._tipo = membros, tipo
     def GetMemberIds(self): return [Id(m) for m in self._m]
+    def GetTypeId(self): return Id(self._tipo) if self._tipo else Id(-1)
 
 
 class View(object):
@@ -123,7 +132,8 @@ class DBMod(types.ModuleType):
     FillPatternTarget = type("FPT", (), {"Drafting": 1})
     StorageType = type("ST", (), {"ElementId": 1, "String": 2})
     SpecTypeId = type("STI", (), {"Reference": type("R", (), {"Material": 1})})
-    BuiltInParameter = type("BIP", (), {})
+    BuiltInParameter = type("BIP", (), {"ALL_MODEL_TYPE_MARK": "TYPEMARK",
+                                        "ALL_MODEL_MARK": "MARK"})
     Category = type("C", (), {"GetCategory": staticmethod(lambda doc, bic: Cat(bic, "cat"))})
     def Color(self, *a): return a
 
@@ -131,7 +141,8 @@ class DBMod(types.ModuleType):
 DB = DBMod("Autodesk.Revit.DB")
 DB.BuiltInCategory = type("BIC", (), dict(
     (n, i) for i, n in enumerate(
-        ["OST_Walls", "OST_Parts", "OST_GenericModel", "OST_Windows", "OST_Doors"], 1)))
+        ["OST_Walls", "OST_Parts", "OST_GenericModel", "OST_Windows", "OST_Doors",
+         "OST_Roofs", "OST_Fascia", "OST_Gutter", "OST_RoofSoffit"], 1)))
 DB.Color = lambda r, g, b: ("cor", r, g, b)
 
 
@@ -168,10 +179,11 @@ def rodar(entradas, doc, sel_ids):
 # --------------------------------------------------------------------------
 PAREDE = Cat(1, "Paredes")
 JANELA = Cat(4, "Janelas")
+TELHADO = Cat(6, "Telhados")
 
 
 def modelo():
-    elementos, grupos, sel = [], [], []
+    elementos, grupos, tipos, sel = [], [], [], []
     for c in range(10):
         base, membros = c * 30.0, []
         for j in range(3):
@@ -190,10 +202,17 @@ def modelo():
         elementos.append(Elem(eid, "900 x 2100", JANELA,
                               BBox(P(base + 8, 0, 4), P(base + 12, 1, 9)), group=9000 + c))
         membros.append(eid)
-        g = Group(9000 + c, membros, BBox(P(base, 0, 0), P(base + 30, 1, 20)))
+        # telhado: NAO pode ser pintado
+        eid = 1095 + c * 100
+        elementos.append(Elem(eid, "Telhado 2 aguas", TELHADO,
+                              BBox(P(base, 0, 20), P(base + 30, 1, 25)), group=9000 + c))
+        membros.append(eid)
+        tipos.append(TipoGrupo(8000 + c, c + 1))          # Marca de tipo 1..10
+        g = Group(9000 + c, membros, BBox(P(base, 0, 0), P(base + 30, 1, 25)),
+                  tipo=8000 + c)
         grupos.append(g); sel.append(9000 + c)
     niveis = [Nivel(500, 0.0), Nivel(501, 10.0)]
-    return Doc(elementos + grupos + niveis), sel
+    return Doc(elementos + grupos + tipos + niveis), sel
 
 
 falhas = []
@@ -323,6 +342,53 @@ if saida:
             falhas.append("marcacao nao reconstruiu as 10 casas:\n%s" % t2)
         else:
             print("[marcacao] 10 casas e 70 papeis lidos do parametro, zero adivinhacao")
+
+# --- Marca de tipo manda no trio, telhado fica de fora ----------------------
+doc_t, sel_t = modelo()
+try:
+    out_t = rodar(["X", "override", "marcatipo", "fachada", False], doc_t, sel_t)
+except Exception as e:
+    falhas.append("marcatipo: EXCECAO %s: %s" % (type(e).__name__, e))
+else:
+    txt = "\n".join(out_t[0])
+    # 10 casas x (6 paredes + 1 janela) = 70; os 10 telhados NAO entram
+    if "70 elemento(s)" not in txt:
+        falhas.append("telhado nao foi excluido:\n%s" % txt)
+    elif "10 elemento(s) de categoria ignorada" not in txt:
+        falhas.append("nao reportou os telhados pulados:\n%s" % txt)
+    else:
+        print("[marcatipo] 10 telhados excluidos, 70 elementos coloridos")
+
+    # cada casa com exatamente 3 cores, e o trio vindo da marca
+    por_casa = {}
+    for casa, trio, papel, regra, hexa, eid, nome in out_t[1]:
+        por_casa.setdefault(casa, {"cores": set(), "trio": trio})["cores"].add(hexa)
+    ruins = [c for c, v in por_casa.items() if len(v["cores"]) != 3]
+    if ruins:
+        falhas.append("casas sem exatamente 3 cores: %s" % ruins)
+    else:
+        print("[marcatipo] todas as %d casas com exatamente 3 cores" % len(por_casa))
+
+    # marca 1..8 -> trios 1..8 ; marca 9 -> trio 1 ; marca 10 -> trio 2
+    PAL = [["#FAD68C", "#D54938", "#F3D1E2"], ["#F9EE9E", "#F89C13", "#F5A992"]]
+    trios_vistos = dict((c, v["trio"]) for c, v in por_casa.items())
+    esperado = dict((i + 1, (i % 8) + 1) for i in range(10))
+    if trios_vistos != esperado:
+        falhas.append("ciclo da marca errado.\n  visto:    %s\n  esperado: %s"
+                      % (trios_vistos, esperado))
+    else:
+        print("[marcatipo] marca 1..8 -> trios 1..8, marca 9 -> trio 1, marca 10 -> trio 2")
+
+    # e as cores da casa 9 tem que ser identicas as da casa 1
+    if por_casa[9]["cores"] != por_casa[1]["cores"]:
+        falhas.append("casa 9 nao repetiu as cores da casa 1: %s vs %s"
+                      % (por_casa[9]["cores"], por_casa[1]["cores"]))
+    elif por_casa[10]["cores"] != por_casa[2]["cores"]:
+        falhas.append("casa 10 nao repetiu as cores da casa 2")
+    elif por_casa[1]["cores"] != set(PAL[0]):
+        falhas.append("casa 1 nao usou o trio 1: %s" % por_casa[1]["cores"])
+    else:
+        print("[marcatipo] casa 9 = cores da casa 1, casa 10 = cores da casa 2")
 
 print()
 if falhas:

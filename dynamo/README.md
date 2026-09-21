@@ -50,7 +50,7 @@ O resumo avisa quando isso acontece: `AVISO: N casa(s) com algum papel vazio`.
 |---|---|---|
 | `eixo` | `"AUTO"`, `"X"`, `"Y"` — eixo em que a fileira se estende | `"AUTO"` |
 | `modo` | `"override"`, `"material"`, `"paint"`, `"marcar"`, `"limpar"` | `"override"` |
-| `casas` | `"grupo"`, `"marcacao"`, um **número**, `"gap"`, `"parametro"`, `"trios"` | `"grupo"` |
+| `casas` | `"marcatipo"`, `"grupo"`, `"marcacao"`, um **número**, `"gap"`, `"parametro"`, `"trios"` | `"marcatipo"` |
 | `faixas` | `"fachada"`, `"parametro"`, `"EIXO"`, `"X"`, `"Y"`, `"Z"`, `"AUTO"` | `"fachada"` |
 | `executar` | `true` / `false` | `false` (simulação) |
 
@@ -58,7 +58,8 @@ O resumo avisa quando isso acontece: `AVISO: N casa(s) com algum papel vazio`.
 
 | Valor | Como funciona | Quando usar |
 |---|---|---|
-| **`"grupo"`** | Cada **Group (bloco)** do Revit é uma casa. | **Melhor opção.** Não depende de geometria, tolerância nem contagem. Selecione os blocos (ou os elementos dentro deles) e pronto. Elementos fora de bloco são reportados e descartados. |
+| **`"marcatipo"`** | Cada Group é uma casa, e o **trio vem da `Marca de tipo` do GroupType**, não da posição na fileira. | **Melhor opção.** Você numera o tipo do grupo 1, 2, 3… e o script obedece. Casa 9 volta ao trio 1, casa 10 ao trio 2, e assim por diante. Ver abaixo. |
+| **`"grupo"`** | Cada **Group (bloco)** do Revit é uma casa, e o trio vem da ordem na fileira. | **Melhor opção.** Não depende de geometria, tolerância nem contagem. Selecione os blocos (ou os elementos dentro deles) e pronto. Elementos fora de bloco são reportados e descartados. |
 | **número** (ex.: `24;`) | Divide a extensão total da fileira nesse nº de fatias iguais. | Geminadas de largura uniforme, sem blocos. |
 | `"gap"` | Quebra onde há vão livre maior que metade da largura típica do elemento. | Casas isoladas com recuo. Avisa se achar uma casa só. |
 | `"parametro"` | Agrupa pelo valor de `PARAM_GRUPO` (padrão `Comentários`). | Fileira irregular, sem blocos. |
@@ -70,6 +71,39 @@ O resumo avisa quando isso acontece: `AVISO: N casa(s) com algum papel vazio`.
   cor3 = molduras das esquadrias.
 - `"Z"` / `"EIXO"` / `"X"` / `"Y"` / `"AUTO"`: modo geométrico antigo — 3 faixas
   iguais ao longo do eixo, ignorando o papel do elemento.
+
+---
+
+## Marca de tipo: você numera, o script obedece
+
+Com `casas = "marcatipo"`, o número do trio sai da **`Marca de tipo`** do tipo do
+grupo (`ALL_MODEL_TYPE_MARK`), não da posição da casa na fileira. Basta numerar os
+tipos de grupo `1, 2, 3, …` no Revit.
+
+O ciclo é por módulo de 8:
+
+| Marca de tipo | 1 | 2 | … | 8 | 9 | 10 | 11 | … | 16 | 17 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Trio | 1 | 2 | … | 8 | **1** | **2** | 3 | … | 8 | **1** |
+
+Dois grupos do mesmo tipo recebem o mesmo trio — é o que a numeração por tipo
+significa. Cada grupo continua sendo uma casa separada e recebe as 3 cores do seu trio.
+
+Onde o script procura, nesta ordem: `Marca de tipo` do GroupType → `Marca` da instância
+→ um parâmetro com o nome em `PARAM_MARCA_TIPO`. O valor pode ter texto junto
+(`CASA 07` vira 7). Casa sem número é reportada e cai no ciclo por posição.
+
+O resumo mostra a marca e o trio de cada casa:
+
+```
+casa 9 (marca 9): trio 1 | 14 elem (cima=5, baixo=5, moldura=4) | ex.: PINTURA ACRILICA
+```
+
+### Telhado não é pintado
+
+`CATEGORIAS_IGNORADAS` tira da conta `OST_Roofs`, `OST_Fascia`, `OST_Gutter` e
+`OST_RoofSoffit` — a fachada é parede e esquadria. Os elementos pulados são contados
+no resumo. Se quiser pintar a testeira ou a calha, tire a categoria da lista no `.py`.
 
 ---
 

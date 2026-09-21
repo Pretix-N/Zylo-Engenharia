@@ -132,6 +132,21 @@ TOLERANCIA_GAP = 0.0
 # casas == "parametro": nome do parâmetro de texto que identifica a casa.
 PARAM_GRUPO = "Comentários"
 
+# Categorias que NUNCA recebem cor. Telhado fica fora: a fachada é parede e
+# esquadria. Tire da lista o que você quiser que seja pintado.
+CATEGORIAS_IGNORADAS = [
+    DB.BuiltInCategory.OST_Roofs,
+    DB.BuiltInCategory.OST_Fascia,
+    DB.BuiltInCategory.OST_Gutter,
+    DB.BuiltInCategory.OST_RoofSoffit,
+]
+
+# casas == "marcatipo": de onde sai o número do trio. O script lê a "Marca de
+# tipo" (ALL_MODEL_TYPE_MARK) do TIPO do grupo; se não achar, tenta a "Marca"
+# da instância; se não achar, este parâmetro pelo nome.
+# O número entra em ciclo: 1..8 = trios 1..8, 9 = trio 1, 10 = trio 2.
+PARAM_MARCA_TIPO = "Marca de tipo"
+
 # Usado quando a seleção do Revit está vazia.
 CATEGORIAS_FALLBACK = [
     DB.BuiltInCategory.OST_Walls,
@@ -274,17 +289,19 @@ def extensao(itens, eixo):
 # 4. Coleta — cada elemento guarda de qual BLOCO veio
 # ---------------------------------------------------------------------------
 
-def expandir(elemento, doc, chave_casa):
-    """Group do Revit vira seus membros, todos carimbados com a chave do bloco."""
+def expandir(elemento, doc, chave_casa, marca_casa=None):
+    """Group do Revit vira seus membros, carimbados com a chave do bloco e com
+    a Marca de tipo do GroupType — que e de onde sai o numero do trio."""
     if isinstance(elemento, DB.Group):
         chave = id_valor(elemento.Id)
+        marca = marca_de_tipo(elemento, doc)
         saida = []
         for mid in elemento.GetMemberIds():
             membro = doc.GetElement(mid)
             if membro is not None:
-                saida.extend(expandir(membro, doc, chave))
+                saida.extend(expandir(membro, doc, chave, marca))
         return saida
-    return [(elemento, chave_casa)]
+    return [(elemento, chave_casa, marca_casa)]
 
 
 def _chave_do_grupo(elemento):
@@ -296,6 +313,61 @@ def _chave_do_grupo(elemento):
     except Exception:
         pass
     return None
+
+
+def marca_de_tipo(elemento, doc):
+    """'Marca de tipo' do TIPO do elemento (para um Group, do GroupType).
+    Cai para a 'Marca' da instância e depois para PARAM_MARCA_TIPO pelo nome."""
+    try:
+        tipo = doc.GetElement(elemento.GetTypeId())
+    except Exception:
+        tipo = None
+
+    for alvo, nome_bip in ((tipo, 'ALL_MODEL_TYPE_MARK'),
+                           (elemento, 'ALL_MODEL_MARK')):
+        if alvo is None:
+            continue
+        bip = getattr(DB.BuiltInParameter, nome_bip, None)
+        if bip is None:
+            continue
+        try:
+            p = alvo.get_Parameter(bip)
+            if p is not None and p.HasValue:
+                valor = p.AsString() or p.AsValueString()
+                if valor and valor.strip():
+                    return valor.strip()
+        except Exception:
+            continue
+
+    for alvo in (tipo, elemento):
+        if alvo is None:
+            continue
+        try:
+            p = alvo.LookupParameter(PARAM_MARCA_TIPO)
+            if p is not None and p.HasValue:
+                valor = p.AsString() or p.AsValueString()
+                if valor and valor.strip():
+                    return valor.strip()
+        except Exception:
+            continue
+    return None
+
+
+def trio_da_marca(marca):
+    """'7' -> indice 6.  '9' -> indice 0: a cada 8 a paleta reinicia.
+    Aceita texto com numero dentro ('CASA 07' -> 7). None se nao houver numero."""
+    if marca is None:
+        return None
+    digitos = u"".join([c for c in u"{0}".format(marca) if c.isdigit()])
+    if not digitos:
+        return None
+    try:
+        n = int(digitos)
+    except ValueError:
+        return None
+    if n <= 0:
+        return None
+    return (n - 1) % len(PALETA_HEX)
 
 
 def elevacao_do_nivel(elemento, doc):
@@ -359,7 +431,7 @@ def coletar(doc, uidoc, log):
         for eid in uidoc.Selection.GetElementIds():
             el = doc.GetElement(eid)
             if el is not None:
-                brutos.extend(expandir(el, doc, None))
+                brutos.extend(expandir(el, doc, None, None))
     except Exception as erro:
         log.append(u"Não consegui ler a seleção do Revit: {0}".format(erro))
 
@@ -376,23 +448,46 @@ def coletar(doc, uidoc, log):
             try:
                 col = DB.FilteredElementCollector(doc, doc.ActiveView.Id) \
                         .OfCategory(bic).WhereElementIsNotElementType()
-                brutos.extend([(e, None) for e in col])
+                brutos.extend([(e, None, None) for e in col])
             except Exception:
                 continue
 
-    dados, vistos = [], set()
-    for el, chave in brutos:
+    ignoradas = set()
+    for bic in CATEGORIAS_IGNORADAS:
+        try:
+            cat = DB.Category.GetCategory(doc, bic)
+            if cat is not None:
+                ignoradas.add(id_valor(cat.Id))
+        except Exception:
+            continue
+
+    dados, vistos, pulados = [], set(), 0
+    for el, chave, marca in brutos:
         eid = id_valor(el.Id)
         if eid in vistos:
             continue
         if getattr(el, 'Category', None) is None:
             continue
+        try:
+            if id_valor(el.Category.Id) in ignoradas:
+                vistos.add(eid)
+                pulados += 1
+                continue
+        except Exception:
+            pass
         bb = caixa(el, doc)
         if bb is None:
             continue
         vistos.add(eid)
         if chave is None:
             chave = _chave_do_grupo(el)
+        if marca is None and chave is not None:
+            try:
+                grupo = doc.GetElement(DB.ElementId(chave))
+                if grupo is not None:
+                    marca = marca_de_tipo(grupo, doc)
+            except Exception:
+                marca = None
         try:
             cat_id = id_valor(el.Category.Id)
             cat_nome = el.Category.Name
@@ -401,7 +496,11 @@ def coletar(doc, uidoc, log):
         dados.append({'el': el, 'bb': bb, 'c': centro(bb), 'casa': chave,
                       'cat_id': cat_id, 'cat': cat_nome,
                       'nivel': elevacao_do_nivel(el, doc),
+                      'marca': marca,
                       'textos': textos_do_elemento(el, doc)})
+    if pulados:
+        log.append(u"{0} elemento(s) de categoria ignorada (telhado etc.) "
+                   u"ficaram de fora — veja CATEGORIAS_IGNORADAS.".format(pulados))
     return dados
 
 
@@ -1016,12 +1115,17 @@ def principal():
             except (TypeError, ValueError):
                 numero_casas = None
 
+            usar_marca = False
             if numero_casas is not None and numero_casas > 0:
                 grupos = casas_por_numero(dados, eixo, numero_casas, resumo)
                 metodo_casas = u"{0} casas iguais".format(numero_casas)
             else:
                 chave = normalizar(str(casas_pedido)).strip()
-                if chave == "marcacao":
+                if chave == "marcatipo":
+                    grupos = casas_por_grupo(dados, eixo, resumo)
+                    usar_marca = True
+                    metodo_casas = u"blocos + trio pela Marca de tipo"
+                elif chave == "marcacao":
                     grupos = casas_por_marcacao(dados, eixo, resumo)
                     metodo_casas = u"marcação em '{0}'".format(PARAM_MARCACAO)
                 elif chave == "grupo":
@@ -1070,8 +1174,19 @@ def principal():
                 plano = []
                 distribuicao = []
                 stats = {}
+                sem_marca = []
                 for indice_casa, grupo in enumerate(grupos):
-                    trio_idx = indice_casa % len(PALETA_HEX)      # o ciclo da paleta
+                    marca_casa = None
+                    if usar_marca:
+                        marcas = [d.get('marca') for d in grupo if d.get('marca')]
+                        marca_casa = marcas[0] if marcas else None
+                        indice = trio_da_marca(marca_casa)
+                        if indice is None:
+                            indice = indice_casa % len(PALETA_HEX)
+                            sem_marca.append(indice_casa + 1)
+                        trio_idx = indice
+                    else:
+                        trio_idx = indice_casa % len(PALETA_HEX)   # ciclo por posicao
                     trio = PALETA_HEX[trio_idx]
 
                     if por_papel:
@@ -1094,7 +1209,7 @@ def principal():
                             break
                     distribuicao.append((indice_casa + 1, len(grupo),
                                          [(nome, len(itens)) for nome, itens in partes],
-                                         exemplo))
+                                         exemplo, marca_casa, trio_idx + 1))
                     for k, (nome, itens) in enumerate(partes):
                         for d in itens:
                             plano.append({'casa': indice_casa + 1, 'trio': trio_idx + 1,
@@ -1123,7 +1238,7 @@ def principal():
                 # quais papéis ficaram vazios, e em quantas casas — é o que diz se o
                 # problema é a regra de classificação ou a geometria do modelo
                 faltando = {}
-                for c, _, partes, _ in distribuicao:
+                for c, _, partes, _, _, _ in distribuicao:
                     for nome, q in partes:
                         if q == 0:
                             faltando.setdefault(nome, []).append(c)
@@ -1135,11 +1250,22 @@ def principal():
                             nome, len(lista), ", ".join([str(c) for c in lista[:12]]),
                             u" ..." if len(lista) > 12 else u""))
 
+                if usar_marca and sem_marca:
+                    resumo.append(u"AVISO: {0} casa(s) sem número na Marca de tipo — "
+                                  u"caíram no ciclo por posição, que pode não bater com "
+                                  u"as vizinhas: {1}{2}".format(
+                                      len(sem_marca),
+                                      ", ".join([str(c) for c in sem_marca[:12]]),
+                                      u" ..." if len(sem_marca) > 12 else u""))
+
                 resumo.append(u"Distribuição casa -> total (papel: nº de elementos):")
-                for c, total, partes, exemplo in distribuicao[:15]:
-                    resumo.append(u"   casa {0}: {1} elem  ({2})  ex.: {3}".format(
-                        c, total, ", ".join([u"{0}={1}".format(n, q) for n, q in partes]),
-                        exemplo[:60]))
+                for c, total, partes, exemplo, marca_c, trio_c in distribuicao[:15]:
+                    resumo.append(u"   casa {0}{1}: trio {2} | {3} elem ({4}) | ex.: {5}".format(
+                        c,
+                        u" (marca {0})".format(marca_c) if marca_c is not None else u"",
+                        trio_c, total,
+                        ", ".join([u"{0}={1}".format(n, q) for n, q in partes]),
+                        exemplo[:45]))
                 if len(distribuicao) > 15:
                     resumo.append(u"   ... mais {0} casa(s)".format(len(distribuicao) - 15))
 
