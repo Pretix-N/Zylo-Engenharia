@@ -1,0 +1,272 @@
+{
+  "Uuid": "ea78550b-ecab-48f3-bad5-5da71c6321cf",
+  "IsCustomNode": false,
+  "Description": "Aplica 8 trios de cores em fachadas de casas lado a lado (ciclo por modulo).",
+  "Name": "PintarFachadas",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "NodeType": "CodeBlockNode",
+      "Code": "\"AUTO\";",
+      "Id": "b185fe18-dd07-4b5c-81af-86b9a5140c43",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "290d6d2f-ee08-4535-91ea-f4b15975fa56",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "eixo: \"X\", \"Y\" ou \"AUTO\""
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "NodeType": "CodeBlockNode",
+      "Code": "\"override\";",
+      "Id": "b803b6d5-b2fa-4b6d-8d2b-1e94f79770b9",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "093a1a9e-f834-4934-8d97-c7d9f206630a",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "modo: \"override\", \"material\" ou \"paint\""
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "NodeType": "CodeBlockNode",
+      "Code": "\"trios\";",
+      "Id": "a7025e47-c168-4ce1-8f68-6d67ce5c5d31",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "bc71febe-969f-40be-9d52-51d523b417c8",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "agrupamento: \"trios\", \"gap\" ou \"parametro\""
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "NodeType": "BooleanInputNode",
+      "InputValue": false,
+      "Id": "76531157-5dc9-44f9-ae8b-ad8368427875",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "355286c0-b831-4ddf-9c02-c3bfea88a36e",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Selection between a true and false."
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "NodeType": "PythonScriptNode",
+      "Code": "# -*- coding: utf-8 -*-\n\"\"\"\nPintarFachadas — nó Python para Dynamo (Revit)\n==============================================\n\nAplica uma paleta de 8 trios de cores a fachadas de casas geminadas / lado a lado.\nCada casa é um grupo de 3 elementos; cada elemento recebe uma cor do trio, na ordem.\nA partir da casa 9 a paleta reinicia (ciclo por módulo).\n\nENTRADAS DO NÓ (portas IN):\n    IN[0]  eixo          : \"X\" | \"Y\" | \"AUTO\"        -> eixo de ordenação das casas\n    IN[1]  modo          : \"override\" | \"material\" | \"paint\"\n    IN[2]  agrupamento   : \"trios\" | \"gap\" | \"parametro\"\n    IN[3]  executar      : bool -> False = simulação (nada é alterado no modelo)\n\nSAÍDA (OUT):\n    [resumo (list<str>), detalhe (list<list>)]\n\nSELEÇÃO:\n    O script lê a seleção ativa do Revit (uidoc.Selection). Selecione os elementos\n    no Revit, volte ao Dynamo e rode. Grupos do Revit são expandidos em seus membros.\n    Se a seleção estiver vazia, cai para CATEGORIAS_FALLBACK na vista ativa.\n\nEngine recomendada: CPython3 (Dynamo 2.7+). O código também roda em IronPython2.\n\"\"\"\n\nimport clr\n\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\n\nimport Autodesk.Revit.DB as DB\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\n\n\n# ---------------------------------------------------------------------------\n# 1. PALETA — 8 trios em HEX\n# ---------------------------------------------------------------------------\n\nPALETA_HEX = [\n    [\"#FAD68C\", \"#D54938\", \"#F3D1E2\"],  # Trio 1\n    [\"#F9EE9E\", \"#F89C13\", \"#F5A992\"],  # Trio 2\n    [\"#AFDCB1\", \"#FFD300\", \"#FAD68C\"],  # Trio 3\n    [\"#CDE7F6\", \"#61BB5B\", \"#F9EE9E\"],  # Trio 4\n    [\"#A6B3D5\", \"#38A5CC\", \"#AFDCB1\"],  # Trio 5\n    [\"#C5A3D5\", \"#36558B\", \"#CDE7F6\"],  # Trio 6\n    [\"#F3D1E2\", \"#5B266C\", \"#A6B3D5\"],  # Trio 7\n    [\"#F5A992\", \"#A53766\", \"#C5A3D5\"],  # Trio 8\n]\n\nELEMENTOS_POR_CASA = 3\n\n\n# ---------------------------------------------------------------------------\n# 2. AJUSTES — edite aqui, não precisa mexer no resto\n# ---------------------------------------------------------------------------\n\n# Ordem das 3 cores DENTRO de cada casa. \"AUTO\" escolhe o eixo com maior\n# dispersão média entre os 3 elementos (bom tanto para faixas verticais\n# lado a lado quanto para faixas empilhadas).\nORDEM_INTERNA = \"AUTO\"            # \"AUTO\" | \"X\" | \"Y\" | \"Z\"\nINVERTER_ORDEM_INTERNA = False    # True inverte a ordem cor1/cor2/cor3 na casa\nINVERTER_ORDEM_CASAS = False      # True percorre as casas da direita para a esquerda\n\n# agrupamento == \"gap\": distância mínima (em pés) entre centros consecutivos\n# para considerar que começou outra casa. 0 = calcula sozinho a partir da mediana.\nTOLERANCIA_GAP = 0.0\n\n# agrupamento == \"parametro\": nome do parâmetro de texto que identifica a casa\n# (ex.: \"Comentários\", \"Marca\", \"Comments\", \"Mark\").\nPARAM_GRUPO = \"Comentários\"\n\n# Usado quando a seleção do Revit está vazia.\nCATEGORIAS_FALLBACK = [\n    DB.BuiltInCategory.OST_Walls,\n    DB.BuiltInCategory.OST_Parts,\n    DB.BuiltInCategory.OST_GenericModel,\n]\n\n# modo == \"paint\": direção para onde a fachada olha, em coordenadas do modelo.\n# None = deduz do eixo principal (linha em X -> fachada em -Y; linha em Y -> -X).\nDIRECAO_FACHADA = None            # ex.: [0.0, -1.0, 0.0]\n\nPREFIXO_MATERIAL = \"ZYLO_FACHADA_\"\n\n\n# ---------------------------------------------------------------------------\n# 3. Utilitários\n# ---------------------------------------------------------------------------\n\ndef _entrada(indice, padrao):\n    \"\"\"Lê IN[indice] com fallback, sem quebrar fora do Dynamo.\"\"\"\n    try:\n        valor = IN[indice]  # noqa: F821  (injetado pelo nó Python)\n    except Exception:\n        return padrao\n    if valor is None:\n        return padrao\n    if isinstance(valor, str) and not valor.strip():\n        return padrao\n    return valor\n\n\ndef hex_para_argb(texto, alfa=255):\n    \"\"\"'#FAD68C' -> (255, 250, 214, 140). Aceita 3 ou 6 dígitos, com ou sem '#'.\"\"\"\n    h = str(texto).strip().lstrip('#')\n    if len(h) == 3:\n        h = ''.join([c * 2 for c in h])\n    if len(h) != 6:\n        raise ValueError(u\"HEX inválido: {0}\".format(texto))\n    return (alfa, int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))\n\n\ndef cor_revit(hex_texto):\n    \"\"\"Equivalente ao Color.ByARGB do Dynamo, mas já em Autodesk.Revit.DB.Color.\"\"\"\n    _, r, g, b = hex_para_argb(hex_texto)\n    return DB.Color(r, g, b)\n\n\nPALETA_ARGB = [[hex_para_argb(h) for h in trio] for trio in PALETA_HEX]\n\n\ndef id_valor(element_id):\n    \"\"\"ElementId.Value (Revit 2024+) ou .IntegerValue (anteriores).\"\"\"\n    for nome in ('Value', 'IntegerValue'):\n        try:\n            return getattr(element_id, nome)\n        except Exception:\n            continue\n    return -1\n\n\ndef caixa(elemento, doc):\n    \"\"\"BoundingBox em coordenadas do modelo, já com o Transform aplicado.\"\"\"\n    bb = None\n    try:\n        bb = elemento.get_BoundingBox(None)\n    except Exception:\n        bb = None\n    if bb is None:\n        try:\n            bb = elemento.get_BoundingBox(doc.ActiveView)\n        except Exception:\n            bb = None\n    if bb is None:\n        return None\n    try:\n        t = bb.Transform\n        p1, p2 = t.OfPoint(bb.Min), t.OfPoint(bb.Max)\n    except Exception:\n        p1, p2 = bb.Min, bb.Max\n    return (\n        (min(p1.X, p2.X), min(p1.Y, p2.Y), min(p1.Z, p2.Z)),\n        (max(p1.X, p2.X), max(p1.Y, p2.Y), max(p1.Z, p2.Z)),\n    )\n\n\ndef centro(bb):\n    (x0, y0, z0), (x1, y1, z1) = bb\n    return ((x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0)\n\n\ndef mediana(valores):\n    if not valores:\n        return 0.0\n    ordenados = sorted(valores)\n    meio = len(ordenados) // 2\n    if len(ordenados) % 2:\n        return ordenados[meio]\n    return (ordenados[meio - 1] + ordenados[meio]) / 2.0\n\n\n# ---------------------------------------------------------------------------\n# 4. Coleta da seleção\n# ---------------------------------------------------------------------------\n\ndef expandir(elemento, doc):\n    \"\"\"Grupos do Revit viram seus membros; o resto passa direto.\"\"\"\n    if isinstance(elemento, DB.Group):\n        saida = []\n        for mid in elemento.GetMemberIds():\n            membro = doc.GetElement(mid)\n            if membro is not None:\n                saida.extend(expandir(membro, doc))\n        return saida\n    return [elemento]\n\n\ndef coletar(doc, uidoc, log):\n    brutos = []\n    try:\n        for eid in uidoc.Selection.GetElementIds():\n            el = doc.GetElement(eid)\n            if el is not None:\n                brutos.extend(expandir(el, doc))\n    except Exception as erro:\n        log.append(u\"Não consegui ler a seleção do Revit: {0}\".format(erro))\n\n    if not brutos:\n        log.append(u\"Seleção vazia — coletando CATEGORIAS_FALLBACK na vista ativa.\")\n        for bic in CATEGORIAS_FALLBACK:\n            try:\n                col = DB.FilteredElementCollector(doc, doc.ActiveView.Id) \\\n                        .OfCategory(bic).WhereElementIsNotElementType()\n                brutos.extend(list(col))\n            except Exception:\n                continue\n\n    # descarta o que não tem categoria ou não tem bounding box\n    validos, vistos = [], set()\n    for el in brutos:\n        chave = id_valor(el.Id)\n        if chave in vistos:\n            continue\n        if getattr(el, 'Category', None) is None:\n            continue\n        if caixa(el, doc) is None:\n            continue\n        vistos.add(chave)\n        validos.append(el)\n    return validos\n\n\n# ---------------------------------------------------------------------------\n# 5. Ordenação e agrupamento\n# ---------------------------------------------------------------------------\n\nEIXOS = {\"X\": 0, \"Y\": 1, \"Z\": 2}\n\n\ndef escolher_eixo(dados, eixo_pedido, log):\n    if str(eixo_pedido).upper() in (\"X\", \"Y\"):\n        return EIXOS[str(eixo_pedido).upper()]\n    espalhamento = []\n    for i in (0, 1):\n        valores = [d['c'][i] for d in dados]\n        espalhamento.append(max(valores) - min(valores))\n    eixo = 0 if espalhamento[0] >= espalhamento[1] else 1\n    log.append(u\"Eixo AUTO -> {0} (dispersão X={1:.2f} ft, Y={2:.2f} ft)\".format(\n        \"XY\"[eixo], espalhamento[0], espalhamento[1]))\n    return eixo\n\n\ndef agrupar_trios(dados, eixo):\n    \"\"\"Ordena tudo pelo eixo e fatia de 3 em 3 (List.SortByKey + List.Chop).\"\"\"\n    secundario = 1 - eixo if eixo in (0, 1) else 1\n    ordenados = sorted(dados, key=lambda d: (d['c'][eixo], d['c'][secundario], d['c'][2]))\n    return [ordenados[i:i + ELEMENTOS_POR_CASA]\n            for i in range(0, len(ordenados), ELEMENTOS_POR_CASA)]\n\n\ndef agrupar_gap(dados, eixo, log):\n    \"\"\"Quebra a fila onde aparece um vão maior que a tolerância.\"\"\"\n    secundario = 1 - eixo if eixo in (0, 1) else 1\n    ordenados = sorted(dados, key=lambda d: (d['c'][eixo], d['c'][secundario], d['c'][2]))\n    gaps = [ordenados[i + 1]['c'][eixo] - ordenados[i]['c'][eixo]\n            for i in range(len(ordenados) - 1)]\n    tol = TOLERANCIA_GAP\n    if tol <= 0:\n        base = mediana([g for g in gaps if g > 1e-6]) or 1.0\n        tol = base * 2.5\n        log.append(u\"Tolerância de gap automática: {0:.2f} ft\".format(tol))\n    grupos, atual = [], [ordenados[0]] if ordenados else []\n    for i in range(len(ordenados) - 1):\n        if gaps[i] > tol:\n            grupos.append(atual)\n            atual = []\n        atual.append(ordenados[i + 1])\n    if atual:\n        grupos.append(atual)\n    return grupos\n\n\ndef agrupar_parametro(dados, eixo, log):\n    \"\"\"Agrupa pelo valor de PARAM_GRUPO; ordena as casas pelo eixo escolhido.\"\"\"\n    baldes = {}\n    sem_valor = 0\n    for d in dados:\n        valor = None\n        try:\n            p = d['el'].LookupParameter(PARAM_GRUPO)\n            if p is not None and p.HasValue:\n                valor = p.AsString() or p.AsValueString()\n        except Exception:\n            valor = None\n        if not valor:\n            sem_valor += 1\n            continue\n        baldes.setdefault(valor.strip(), []).append(d)\n    if sem_valor:\n        log.append(u\"{0} elemento(s) sem '{1}' preenchido — ficaram de fora.\".format(\n            sem_valor, PARAM_GRUPO))\n    grupos = list(baldes.values())\n    grupos.sort(key=lambda g: min(d['c'][eixo] for d in g))\n    return grupos\n\n\ndef eixo_interno(grupos):\n    \"\"\"Descobre em qual eixo os 3 elementos de uma casa se distribuem.\"\"\"\n    if str(ORDEM_INTERNA).upper() in EIXOS:\n        return EIXOS[str(ORDEM_INTERNA).upper()]\n    medias = []\n    for i in (0, 1, 2):\n        acumulado = []\n        for g in grupos:\n            if len(g) < 2:\n                continue\n            valores = [d['c'][i] for d in g]\n            acumulado.append(max(valores) - min(valores))\n        medias.append(sum(acumulado) / len(acumulado) if acumulado else 0.0)\n    return medias.index(max(medias))\n\n\n# ---------------------------------------------------------------------------\n# 6. Aplicação das cores\n# ---------------------------------------------------------------------------\n\ndef _chamar(obj, nomes, *args):\n    \"\"\"Chama o primeiro método que existir (nomes novos e antigos da API).\"\"\"\n    for nome in nomes:\n        metodo = getattr(obj, nome, None)\n        if metodo is None:\n            continue\n        try:\n            metodo(*args)\n            return True\n        except Exception:\n            continue\n    return False\n\n\ndef id_hachura_solida(doc):\n    alvo = DB.ElementId.InvalidElementId\n    try:\n        for fp in DB.FilteredElementCollector(doc).OfClass(DB.FillPatternElement):\n            padrao = fp.GetFillPattern()\n            if padrao.IsSolidFill:\n                alvo = fp.Id\n                if padrao.Target == DB.FillPatternTarget.Drafting:\n                    return fp.Id\n    except Exception:\n        pass\n    return alvo\n\n\ndef montar_override(cor, hachura_id):\n    ogs = DB.OverrideGraphicSettings()\n    _chamar(ogs, ['SetSurfaceForegroundPatternVisible', 'SetProjectionFillPatternVisible'], True)\n    _chamar(ogs, ['SetSurfaceForegroundPatternColor', 'SetProjectionFillColor'], cor)\n    _chamar(ogs, ['SetCutForegroundPatternVisible', 'SetCutFillPatternVisible'], True)\n    _chamar(ogs, ['SetCutForegroundPatternColor', 'SetCutFillColor'], cor)\n    if hachura_id != DB.ElementId.InvalidElementId:\n        _chamar(ogs, ['SetSurfaceForegroundPatternId', 'SetProjectionFillPatternId'], hachura_id)\n        _chamar(ogs, ['SetCutForegroundPatternId', 'SetCutFillPatternId'], hachura_id)\n    _chamar(ogs, ['SetProjectionLineColor'], cor)\n    _chamar(ogs, ['SetCutLineColor'], cor)\n    _chamar(ogs, ['SetSurfaceTransparency'], 0)\n    return ogs\n\n\ndef obter_material(doc, hex_texto, cache, hachura_id):\n    nome = PREFIXO_MATERIAL + str(hex_texto).lstrip('#').upper()\n    if nome in cache:\n        return cache[nome]\n    achado = None\n    for mat in DB.FilteredElementCollector(doc).OfClass(DB.Material):\n        if mat.Name == nome:\n            achado = mat\n            break\n    if achado is None:\n        achado = doc.GetElement(DB.Material.Create(doc, nome))\n    cor = cor_revit(hex_texto)\n    try:\n        achado.Color = cor\n        achado.UseRenderAppearanceForShading = False\n        achado.Transparency = 0\n        if hachura_id != DB.ElementId.InvalidElementId:\n            achado.SurfaceForegroundPatternId = hachura_id\n            achado.SurfaceForegroundPatternColor = cor\n    except Exception:\n        pass\n    cache[nome] = achado\n    return achado\n\n\nBIPS_MATERIAL = ['DPART_MATERIAL_ID_PARAM', 'MATERIAL_ID_PARAM',\n                 'STRUCTURAL_MATERIAL_PARAM']\n\n\ndef _param_de_material(p):\n    if p.StorageType != DB.StorageType.ElementId or p.IsReadOnly:\n        return False\n    d = p.Definition\n    try:\n        return d.GetDataType() == DB.SpecTypeId.Reference.Material\n    except Exception:\n        pass\n    try:\n        return str(d.ParameterType) == 'Material'\n    except Exception:\n        return False\n\n\ndef aplicar_material(elemento, material):\n    for nome_bip in BIPS_MATERIAL:\n        bip = getattr(DB.BuiltInParameter, nome_bip, None)\n        if bip is None:\n            continue\n        p = elemento.get_Parameter(bip)\n        if p is not None and not p.IsReadOnly:\n            p.Set(material.Id)\n            return True\n    for p in elemento.Parameters:\n        if _param_de_material(p):\n            p.Set(material.Id)\n            return True\n    return False\n\n\ndef faces_da_fachada(elemento, direcao):\n    \"\"\"Faces planas verticais que melhor apontam para `direcao`.\"\"\"\n    opcoes = DB.Options()\n    opcoes.ComputeReferences = True\n    opcoes.IncludeNonVisibleObjects = False\n    opcoes.DetailLevel = DB.ViewDetailLevel.Fine\n\n    solidos = []\n\n    def varrer(geo):\n        for g in geo:\n            if isinstance(g, DB.Solid):\n                if g.Faces.Size > 0 and g.Volume > 1e-9:\n                    solidos.append(g)\n            elif isinstance(g, DB.GeometryInstance):\n                varrer(g.GetInstanceGeometry())\n\n    try:\n        varrer(elemento.get_Geometry(opcoes))\n    except Exception:\n        return []\n\n    candidatas = []\n    for solido in solidos:\n        for face in solido.Faces:\n            if not isinstance(face, DB.PlanarFace):\n                continue\n            n = face.FaceNormal\n            if abs(n.Z) > 0.35:       # piso/teto\n                continue\n            alinhamento = n.X * direcao[0] + n.Y * direcao[1] + n.Z * direcao[2]\n            if alinhamento <= 0.2:\n                continue\n            candidatas.append((face.Area * alinhamento, face))\n    if not candidatas:\n        return []\n    candidatas.sort(key=lambda t: t[0], reverse=True)\n    melhor = candidatas[0][0]\n    return [f for pontuacao, f in candidatas if pontuacao >= melhor * 0.6]\n\n\n# ---------------------------------------------------------------------------\n# 7. Execução\n# ---------------------------------------------------------------------------\n\neixo_pedido = str(_entrada(0, \"AUTO\")).upper()\nmodo = str(_entrada(1, \"override\")).lower().strip()\nagrupamento = str(_entrada(2, \"trios\")).lower().strip()\nexecutar = bool(_entrada(3, False))\n\ndoc = DocumentManager.Instance.CurrentDBDocument\nuidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\nvista = doc.ActiveView\n\nresumo = []\ndetalhe = []\n\nif modo not in (\"override\", \"material\", \"paint\"):\n    resumo.append(u\"ERRO: modo '{0}' desconhecido. Use override, material ou paint.\".format(modo))\n    OUT = [resumo, detalhe]\nelse:\n    elementos = coletar(doc, uidoc, resumo)\n\n    if not elementos:\n        resumo.append(u\"ERRO: nenhum elemento válido. Selecione as fachadas no Revit e rode de novo.\")\n        OUT = [resumo, detalhe]\n    else:\n        dados = []\n        for el in elementos:\n            bb = caixa(el, doc)\n            dados.append({'el': el, 'bb': bb, 'c': centro(bb)})\n\n        eixo = escolher_eixo(dados, eixo_pedido, resumo)\n\n        if agrupamento == \"gap\":\n            grupos = agrupar_gap(dados, eixo, resumo)\n        elif agrupamento == \"parametro\":\n            grupos = agrupar_parametro(dados, eixo, resumo)\n        else:\n            grupos = agrupar_trios(dados, eixo)\n\n        if INVERTER_ORDEM_CASAS:\n            grupos.reverse()\n\n        # --- validação: sem isso o trio \"escorrega\" e tudo sai deslocado ---\n        fora_do_padrao = [(i + 1, len(g)) for i, g in enumerate(grupos)\n                          if len(g) != ELEMENTOS_POR_CASA]\n        if fora_do_padrao:\n            resumo.append(u\"ATENÇÃO: {0} casa(s) não têm exatamente {1} elementos: {2}\".format(\n                len(fora_do_padrao), ELEMENTOS_POR_CASA,\n                \", \".join([u\"casa {0}={1}\".format(a, b) for a, b in fora_do_padrao[:10]])))\n            resumo.append(u\"   As cores desses grupos vão ficar truncadas. \"\n                          u\"Revise a seleção ou troque o agrupamento para 'gap'/'parametro'.\")\n\n        eixo_i = eixo_interno(grupos)\n        resumo.append(u\"Ordem interna do trio: eixo {0}{1}\".format(\n            \"XYZ\"[eixo_i], u\" (invertida)\" if INVERTER_ORDEM_INTERNA else u\"\"))\n\n        if DIRECAO_FACHADA:\n            direcao = tuple(DIRECAO_FACHADA)\n        else:\n            direcao = (0.0, -1.0, 0.0) if eixo == 0 else (-1.0, 0.0, 0.0)\n\n        # --- monta o plano de pintura (ainda sem tocar no modelo) ---\n        plano = []\n        for indice_casa, grupo in enumerate(grupos):\n            trio_idx = indice_casa % len(PALETA_HEX)           # o \"ciclo\" da paleta\n            trio = PALETA_HEX[trio_idx]\n            ordenado = sorted(grupo, key=lambda d: d['c'][eixo_i])\n            if INVERTER_ORDEM_INTERNA:\n                ordenado.reverse()\n            for pos, d in enumerate(ordenado):\n                if pos >= len(trio):\n                    break\n                plano.append({\n                    'casa': indice_casa + 1,\n                    'trio': trio_idx + 1,\n                    'pos': pos + 1,\n                    'hex': trio[pos],\n                    'el': d['el'],\n                })\n\n        resumo.append(u\"{0} elemento(s) -> {1} casa(s) -> trios 1..8 em ciclo.\".format(\n            len(elementos), len(grupos)))\n        resumo.append(u\"Modo: {0} | eixo das casas: {1} | agrupamento: {2}\".format(\n            modo, \"XYZ\"[eixo], agrupamento))\n\n        if not executar:\n            resumo.insert(0, u\"*** SIMULAÇÃO — ligue 'executar' para aplicar. ***\")\n            for p in plano:\n                detalhe.append([p['casa'], p['trio'], p['pos'], p['hex'],\n                                id_valor(p['el'].Id), p['el'].Name])\n            OUT = [resumo, detalhe]\n        else:\n            if modo == \"override\" and not vista.AreGraphicsOverridesAllowed():\n                resumo.append(u\"ERRO: a vista '{0}' não aceita sobrescrita de gráficos.\".format(vista.Name))\n                OUT = [resumo, detalhe]\n            else:\n                TransactionManager.Instance.EnsureInTransaction(doc)\n                hachura = id_hachura_solida(doc)\n                cache_mat = {}\n                ok, falhas = 0, []\n\n                for p in plano:\n                    el = p['el']\n                    try:\n                        if modo == \"override\":\n                            vista.SetElementOverrides(el.Id, montar_override(cor_revit(p['hex']), hachura))\n                            ok += 1\n                        elif modo == \"material\":\n                            mat = obter_material(doc, p['hex'], cache_mat, hachura)\n                            if aplicar_material(el, mat):\n                                ok += 1\n                            else:\n                                falhas.append((id_valor(el.Id),\n                                               u\"sem parâmetro de material editável\"))\n                        else:  # paint\n                            mat = obter_material(doc, p['hex'], cache_mat, hachura)\n                            faces = faces_da_fachada(el, direcao)\n                            if not faces:\n                                falhas.append((id_valor(el.Id), u\"nenhuma face de fachada encontrada\"))\n                            else:\n                                for face in faces:\n                                    try:\n                                        if doc.IsPainted(el.Id, face):\n                                            doc.RemovePaint(el.Id, face)\n                                    except Exception:\n                                        pass\n                                    doc.Paint(el.Id, face, mat.Id)\n                                ok += 1\n                    except Exception as erro:\n                        falhas.append((id_valor(el.Id), str(erro)))\n\n                    detalhe.append([p['casa'], p['trio'], p['pos'], p['hex'],\n                                    id_valor(el.Id), el.Name])\n\n                TransactionManager.Instance.TransactionTaskDone()\n\n                resumo.append(u\"Aplicado em {0} elemento(s).\".format(ok))\n                if falhas:\n                    resumo.append(u\"{0} falha(s):\".format(len(falhas)))\n                    for eid, msg in falhas[:20]:\n                        resumo.append(u\"   id {0}: {1}\".format(eid, msg))\n\n                OUT = [resumo, detalhe]\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "1cde4132-55b2-48e7-bc2c-e42d0ebcdd42",
+      "Inputs": [
+        {
+          "Id": "3b75ed23-52d0-4302-9ad5-3c3ec76b0dd7",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "8a80f2ee-b4c3-465c-b59f-a0068c35cfb7",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "17d4ead9-7a96-4d3d-afc2-c20980ef0e61",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "4daf8a8c-cb88-4f64-88bf-b85b04828d46",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "e38d534f-3e09-491e-99a0-3251f07314c2",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "290d6d2f-ee08-4535-91ea-f4b15975fa56",
+      "End": "3b75ed23-52d0-4302-9ad5-3c3ec76b0dd7",
+      "Id": "3f43c66a-40fa-4e02-a599-2eacaf0bd784",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "093a1a9e-f834-4934-8d97-c7d9f206630a",
+      "End": "8a80f2ee-b4c3-465c-b59f-a0068c35cfb7",
+      "Id": "49a7f8e0-d70f-4b42-bcda-7c68b8327a59",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "bc71febe-969f-40be-9d52-51d523b417c8",
+      "End": "17d4ead9-7a96-4d3d-afc2-c20980ef0e61",
+      "Id": "a158365b-6220-4fe7-b949-5376f2922ad2",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "355286c0-b831-4ddf-9c02-c3bfea88a36e",
+      "End": "4daf8a8c-cb88-4f64-88bf-b85b04828d46",
+      "Id": "ce522a83-43f6-4725-b087-5990fada7979",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": false,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.13.1.3887",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "b185fe18-dd07-4b5c-81af-86b9a5140c43",
+        "Name": "eixo",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "b803b6d5-b2fa-4b6d-8d2b-1e94f79770b9",
+        "Name": "modo",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 110.0
+      },
+      {
+        "Id": "a7025e47-c168-4ce1-8f68-6d67ce5c5d31",
+        "Name": "agrupamento",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 220.0
+      },
+      {
+        "Id": "76531157-5dc9-44f9-ae8b-ad8368427875",
+        "Name": "executar",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 330.0
+      },
+      {
+        "Id": "1cde4132-55b2-48e7-bc2c-e42d0ebcdd42",
+        "Name": "PintarFachadas",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 380.0,
+        "Y": 120.0
+      }
+    ],
+    "Annotations": [],
+    "X": 60.0,
+    "Y": 60.0,
+    "Zoom": 0.9
+  }
+}
