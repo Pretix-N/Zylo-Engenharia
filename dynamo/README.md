@@ -65,15 +65,37 @@ O resumo avisa quando isso acontece: `AVISO: N casa(s) com algum papel vazio`.
 
 ---
 
-## O que conta como "moldura"
+## Ordem das regras de classificação
 
-Duas regras, nesta ordem:
+Cada elemento passa por estas quatro regras, na ordem. A primeira que decidir, manda.
 
-1. **Categoria** — `CATEGORIAS_MOLDURA` no `.py`, padrão `OST_Windows` e `OST_Doors`.
-2. **Palavra no nome** do elemento, do tipo, da família ou da categoria —
-   `PALAVRAS_MOLDURA`: `moldura`, `esquadria`, `marco`, `guarnic`, `peitoril`,
-   `verga`, `frame`, `trim`, `jamb`, `sill`, `casing`, `batente`.
-   A comparação ignora maiúsculas e acentos.
+1. **Moldura por categoria** — `CATEGORIAS_MOLDURA`, padrão `OST_Windows` e `OST_Doors`.
+2. **Moldura por nome** — `PALAVRAS_MOLDURA`: `moldura`, `esquadria`, `marco`,
+   `guarnic`, `peitoril`, `verga`, `frame`, `trim`, `jamb`, `sill`, `casing`, `batente`.
+3. **Cima/baixo por nome** — `PALAVRAS_CIMA` / `PALAVRAS_BAIXO`. Se o modelo já
+   nomeia a parede pela posição (`... PAREDE DE BAIXO`, `... EM BAIXO`), o nome
+   vence a geometria. Nome que bate nas duas listas cai para a regra 4.
+4. **Cima/baixo pela cota de corte** — `CORTE_ALTURA` (fração da altura da casa,
+   padrão `0.5`) ou `CORTE_ABSOLUTO` (cota Z fixa em pés).
+
+O relatório diz quantos elementos cada regra decidiu:
+
+```
+Como cada elemento foi classificado: moldura por categoria=132, moldura por nome=0,
+parede por nome=2, parede pela cota de corte=189.
+```
+
+Cuidado ao acrescentar palavras curtas em `PALAVRAS_BAIXO`: em modelo de orçamento,
+`embasamento` costuma ser erro de grafia de `emassamento` (o serviço), não a base da
+parede. Só entre nessa lista o que indica **posição**, nunca serviço.
+
+Modelo de levantamento de serviço costuma ter **paredes** que representam a pintura
+de portões e janelas (`PINTURA ESMALTE SINTÉTICO PARA PORTÃO DE METAL`). Por padrão
+contam como parede; para mandá-las para a cor da moldura, descomente no `.py`:
+
+```python
+PALAVRAS_MOLDURA += ["portao", "janela de metal", "para metais", "vidro"]
+```
 
 Rodando em simulação, o resumo imprime o **inventário de categorias** da seleção:
 
@@ -102,6 +124,15 @@ Para trocar qual cor vai para qual papel, reordene `PAPEL_DAS_CORES`:
 ```python
 PAPEL_DAS_CORES = ["cima", "baixo", "moldura"]   # cor1, cor2, cor3
 ```
+
+---
+
+## Seleção é obrigatória
+
+`EXIGIR_SELECAO = True` (padrão): sem nada selecionado no Revit, o script **para**
+com erro em vez de pintar tudo que estiver na vista ativa. Ponha `False` só se você
+realmente quiser colorir a vista inteira — e saiba que isso inclui portas e janelas
+internas, que também entram como moldura.
 
 ---
 

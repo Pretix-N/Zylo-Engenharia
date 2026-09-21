@@ -183,4 +183,57 @@ assert ns["escolher_eixo"](d20, "AUTO", []) == 0
 assert ns["escolher_eixo"](d20, "Y", []) == 1
 print("escolha de eixo ok")
 
-print("\nTODOS OS TESTES PASSARAM")
+# --- 13. Nomes REAIS do modelo do usuario --------------------------------
+# Modelo de levantamento de servico: as paredes sao nomeadas pelo servico,
+# nao pela posicao. Algumas ja trazem a posicao no nome.
+reais_baixo = [
+    "EMBASSAMENTO, LIXAMENTO E PINTURA PAREDE DE BAIXO",
+    "EMASSAMENTO, LIXAMENTO E PINTURA RF 78 EM BAIXO",
+]
+reais_neutros = [
+    "EMBASSAMENTO, LIXAMENTO E PINTURA",
+    "EMASSAMENTO, LIXAMENTO E PINTURA 2",
+    "PINTURA ACRILICA SIMPLES EM PAREDE",
+    "CHAPISCO, REBOCO, EMASSAMENTO, LIXAMENTO E PINTURA RF 79",
+    "LIMPEZA NO AZULEIJO 181B",
+    "REMOÇÃO REBOCO, CHAPISCO, REBOCO, EMASSAMENTO, LIXAMENTO E PINTURA 12B",
+    "REBOCO, EMBASAMENTO, LIXAMENTO E PINTURA 184A",   # grafia de "emassamento"
+    "LIXAMENTO PINTURA ESMALTE SINTÉTICO PARA METAIS",
+    "LIMPEZA NO VIDRO",
+]
+for nome in reais_baixo:
+    assert ns["papel_por_nome"](elem(0, 1, 0, 1, "x", textos=[nome])) == "baixo", nome
+for nome in reais_neutros:
+    assert ns["papel_por_nome"](elem(0, 1, 0, 1, "x", textos=[nome])) is None, nome
+# e nenhum deles pode ser confundido com moldura
+for nome in reais_baixo + reais_neutros:
+    assert not ns["e_moldura"](elem(0, 1, 0, 1, "x", textos=[nome]), set()), nome
+print("nomes reais do modelo classificados corretamente ok")
+
+# --- 14. Nome vence a geometria ------------------------------------------
+# parede marcada "PAREDE DE BAIXO" mas posicionada no alto: o nome manda
+casa_mista = [
+    elem(0.0, 10.0, 15.0, 20.0, "alta_mas_de_baixo",
+         textos=["EMBASSAMENTO, LIXAMENTO E PINTURA PAREDE DE BAIXO"]),
+    elem(0.0, 10.0, 0.0, 5.0, "generica_baixa", textos=["PINTURA ACRILICA"]),
+    elem(0.0, 10.0, 15.0, 20.0, "generica_alta", textos=["PINTURA ACRILICA"]),
+]
+st = {}
+p5 = ns["repartir_fachada"](casa_mista, set(), st)
+assert [d["el"] for d in p5["baixo"]] == ["alta_mas_de_baixo", "generica_baixa"], p5["baixo"]
+assert [d["el"] for d in p5["generica_alta" and "cima"]] == ["generica_alta"]
+assert st["parede_nome"] == 1 and st["parede_geom"] == 2, st
+print("regra por nome tem precedencia sobre a cota de corte ok")
+
+# --- 15. Motivo da classificacao entra nas estatisticas ------------------
+st = {}
+ns["repartir_fachada"]([
+    elem(0, 1, 0, 1, "j", cat=CAT_JANELA),
+    elem(0, 1, 0, 1, "m", textos=["Moldura 15"]),
+    elem(0, 1, 0, 1, "p", textos=["PINTURA"]),
+], IDS_MOLDURA, st)
+assert st.get("moldura_categoria") == 1 and st.get("moldura_nome") == 1, st
+assert st.get("parede_geom") == 1, st
+print("estatisticas de classificacao ok")
+
+print("\nTODOS OS TESTES PASSARAM (incl. nomes reais)")

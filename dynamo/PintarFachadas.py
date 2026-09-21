@@ -68,8 +68,23 @@ PALETA_HEX = [
 # sem mexer na lógica. Papéis válidos: "cima", "baixo", "moldura".
 PAPEL_DAS_CORES = ["cima", "baixo", "moldura"]   # cor1, cor2, cor3
 
-# Onde a parede se divide entre "baixo" e "cima", como fração da altura da casa.
-# 0.5 = na metade. 0.6 = a faixa de baixo ocupa 60% da altura.
+# Se True, o script PARA quando não há nada selecionado no Revit, em vez de
+# sair pintando tudo que estiver na vista ativa. Deixe True.
+EXIGIR_SELECAO = True
+
+# Regra 1 para separar cima de baixo: PELO NOME. Se o nome do elemento, do tipo
+# ou da família contiver uma destas expressões, o papel é decidido na hora e a
+# geometria nem é consultada. Comparação sem acento e sem maiúsculas.
+# CUIDADO ao acrescentar palavras curtas: "embasamento" parece indicar a base
+# da parede, mas em modelo de orçamento costuma ser erro de grafia de
+# "emassamento" (o serviço). Só ponha aqui o que indica POSIÇÃO, não serviço.
+PALAVRAS_BAIXO = ["parede de baixo", "de baixo", "em baixo", "embaixo",
+                  "inferior", "terreo", "pavimento terreo"]
+PALAVRAS_CIMA = ["parede de cima", "de cima", "em cima", "superior",
+                 "pavimento superior", "oitao", "platibanda"]
+
+# Regra 2 (usada quando o nome não decide): onde a parede se divide entre
+# "baixo" e "cima", como fração da altura da casa. 0.5 = na metade.
 CORTE_ALTURA = 0.5
 # Se você preferir um nível fixo, ponha a cota Z em PÉS aqui (ignora CORTE_ALTURA).
 CORTE_ABSOLUTO = None
@@ -85,6 +100,11 @@ PALAVRAS_MOLDURA = [
     "moldura", "esquadria", "marco", "guarnic", "peitoril", "verga",
     "frame", "trim", "jamb", "sill", "casing", "batente",
 ]
+# Em modelo de orçamento existem PAREDES que representam a pintura de portões,
+# janelas e metais ("PINTURA ESMALTE SINTÉTICO PARA PORTÃO DE METAL"). Por
+# padrão elas contam como parede. Para mandá-las para a cor da moldura,
+# descomente a linha abaixo:
+# PALAVRAS_MOLDURA += ["portao", "janela de metal", "para metais", "vidro"]
 
 # Faixas geométricas (quando faixas != "fachada"):
 #   "extensao" -> divide a largura/altura da casa em 3 partes iguais
@@ -284,8 +304,15 @@ def coletar(doc, uidoc, log):
     except Exception as erro:
         log.append(u"Não consegui ler a seleção do Revit: {0}".format(erro))
 
+    if not brutos and EXIGIR_SELECAO:
+        log.append(u"ERRO: nada selecionado no Revit. Selecione os blocos das casas "
+                   u"e rode de novo. (Para pintar tudo que estiver na vista ativa, "
+                   u"ponha EXIGIR_SELECAO = False no topo do script.)")
+        return []
+
     if not brutos:
-        log.append(u"Seleção vazia — coletando CATEGORIAS_FALLBACK na vista ativa.")
+        log.append(u"ATENÇÃO: seleção vazia — pintando TUDO que está na vista ativa "
+                   u"(CATEGORIAS_FALLBACK), inclusive o que você não queria.")
         for bic in CATEGORIAS_FALLBACK:
             try:
                 col = DB.FilteredElementCollector(doc, doc.ActiveView.Id) \
@@ -461,32 +488,66 @@ def casas_por_trios(dados, eixo, log):
 PAPEIS = ("cima", "baixo", "moldura")
 
 
-def e_moldura(d, ids_moldura):
-    """Classifica um elemento como moldura de esquadria: por categoria primeiro,
-    por palavra no nome depois."""
+def _texto(d):
+    return u" ".join([normalizar(t) for t in d.get('textos', [])])
+
+
+def motivo_moldura(d, ids_moldura):
+    """None se não é moldura; senão diz por que foi classificada — o motivo
+    entra no relatório para você saber qual regra ajustar."""
     if d.get('cat_id') in ids_moldura:
-        return True
-    alvo = u" ".join([normalizar(t) for t in d.get('textos', [])])
+        return "categoria"
+    alvo = _texto(d)
     for palavra in PALAVRAS_MOLDURA:
         if palavra in alvo:
-            return True
-    return False
+            return "nome"
+    return None
 
 
-def repartir_fachada(grupo, ids_moldura):
-    """cima / baixo / moldura. A cota de corte é calculada por casa, a partir
-    da altura da própria parede — terreno inclinado não estraga o resultado."""
+def e_moldura(d, ids_moldura):
+    return motivo_moldura(d, ids_moldura) is not None
+
+
+def papel_por_nome(d):
+    """'cima' / 'baixo' quando o nome do elemento decide, None quando não.
+    Nome ambíguo (bate nas duas listas) cai para a regra geométrica."""
+    alvo = _texto(d)
+    achou_baixo = any(p in alvo for p in PALAVRAS_BAIXO)
+    achou_cima = any(p in alvo for p in PALAVRAS_CIMA)
+    if achou_baixo and not achou_cima:
+        return "baixo"
+    if achou_cima and not achou_baixo:
+        return "cima"
+    return None
+
+
+def repartir_fachada(grupo, ids_moldura, stats=None):
+    """cima / baixo / moldura.
+    Ordem das regras: moldura por categoria -> moldura por nome ->
+    cima/baixo por nome -> cima/baixo pela cota de corte da casa."""
+    if stats is None:
+        stats = {}
     papeis = {"cima": [], "baixo": [], "moldura": []}
-    parede = []
-    for d in grupo:
-        if e_moldura(d, ids_moldura):
-            papeis["moldura"].append(d)
-        else:
-            parede.append(d)
+    parede, por_geometria = [], []
 
-    if not parede:
+    for d in grupo:
+        motivo = motivo_moldura(d, ids_moldura)
+        if motivo is not None:
+            papeis["moldura"].append(d)
+            stats["moldura_" + motivo] = stats.get("moldura_" + motivo, 0) + 1
+            continue
+        parede.append(d)
+        nome = papel_por_nome(d)
+        if nome is not None:
+            papeis[nome].append(d)
+            stats["parede_nome"] = stats.get("parede_nome", 0) + 1
+        else:
+            por_geometria.append(d)
+
+    if not por_geometria:
         return papeis
 
+    # a cota de corte sai da altura da parede da casa (molduras não contam)
     if CORTE_ABSOLUTO is not None:
         corte = float(CORTE_ABSOLUTO)
     else:
@@ -494,8 +555,9 @@ def repartir_fachada(grupo, ids_moldura):
         z1 = max(d['bb'][1][2] for d in parede)
         corte = z0 + (z1 - z0) * float(CORTE_ALTURA)
 
-    for d in parede:
+    for d in por_geometria:
         papeis["cima" if d['c'][2] >= corte else "baixo"].append(d)
+        stats["parede_geom"] = stats.get("parede_geom", 0) + 1
     return papeis
 
 
@@ -818,12 +880,13 @@ else:
 
             plano = []
             distribuicao = []
+            stats = {}
             for indice_casa, grupo in enumerate(grupos):
                 trio_idx = indice_casa % len(PALETA_HEX)      # o ciclo da paleta
                 trio = PALETA_HEX[trio_idx]
 
                 if por_papel:
-                    papeis = repartir_fachada(grupo, ids_moldura)
+                    papeis = repartir_fachada(grupo, ids_moldura, stats)
                     partes = [(PAPEL_DAS_CORES[k], papeis.get(PAPEL_DAS_CORES[k], []))
                               for k in range(3)]
                 else:
@@ -832,8 +895,17 @@ else:
                         faixas.reverse()
                     partes = [(u"faixa{0}".format(k + 1), faixas[k]) for k in range(3)]
 
+                exemplo = u""
+                for _, itens in partes:
+                    if itens:
+                        try:
+                            exemplo = itens[0]['el'].Name
+                        except Exception:
+                            exemplo = u"?"
+                        break
                 distribuicao.append((indice_casa + 1, len(grupo),
-                                     [(nome, len(itens)) for nome, itens in partes]))
+                                     [(nome, len(itens)) for nome, itens in partes],
+                                     exemplo))
                 for k, (nome, itens) in enumerate(partes):
                     for d in itens:
                         plano.append({'casa': indice_casa + 1, 'trio': trio_idx + 1,
@@ -844,15 +916,35 @@ else:
                               len(dados), len(grupos), metodo_casas))
             resumo.append(u"Modo: {0} | eixo da fileira: {1}".format(modo, "XYZ"[eixo]))
 
-            vazios = [c for c, _, partes in distribuicao if any(n == 0 for _, n in partes)]
-            if vazios:
-                resumo.append(u"AVISO: {0} casa(s) com algum papel vazio (vão mostrar "
-                              u"menos de 3 cores). Primeiras: {1}".format(
-                                  len(vazios), ", ".join([str(c) for c in vazios[:8]])))
+            if por_papel:
+                resumo.append(u"Como cada elemento foi classificado: "
+                              u"moldura por categoria={0}, moldura por nome={1}, "
+                              u"parede por nome={2}, parede pela cota de corte={3}.".format(
+                                  stats.get("moldura_categoria", 0),
+                                  stats.get("moldura_nome", 0),
+                                  stats.get("parede_nome", 0),
+                                  stats.get("parede_geom", 0)))
+
+            # quais papéis ficaram vazios, e em quantas casas — é o que diz se o
+            # problema é a regra de classificação ou a geometria do modelo
+            faltando = {}
+            for c, _, partes, _ in distribuicao:
+                for nome, q in partes:
+                    if q == 0:
+                        faltando.setdefault(nome, []).append(c)
+            if faltando:
+                resumo.append(u"AVISO: papéis vazios (essas casas mostram menos de 3 cores):")
+                for nome in sorted(faltando):
+                    lista = faltando[nome]
+                    resumo.append(u"   sem '{0}': {1} casa(s) -> {2}{3}".format(
+                        nome, len(lista), ", ".join([str(c) for c in lista[:12]]),
+                        u" ..." if len(lista) > 12 else u""))
+
             resumo.append(u"Distribuição casa -> total (papel: nº de elementos):")
-            for c, total, partes in distribuicao[:15]:
-                resumo.append(u"   casa {0}: {1} elem  ({2})".format(
-                    c, total, ", ".join([u"{0}={1}".format(n, q) for n, q in partes])))
+            for c, total, partes, exemplo in distribuicao[:15]:
+                resumo.append(u"   casa {0}: {1} elem  ({2})  ex.: {3}".format(
+                    c, total, ", ".join([u"{0}={1}".format(n, q) for n, q in partes]),
+                    exemplo[:60]))
             if len(distribuicao) > 15:
                 resumo.append(u"   ... mais {0} casa(s)".format(len(distribuicao) - 15))
 
