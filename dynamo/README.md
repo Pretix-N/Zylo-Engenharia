@@ -18,6 +18,7 @@ A partir da casa 9 a paleta reinicia (ciclo por módulo).
 | `teste_logica.py` | Testa HEX, detecção de casas, papéis e ciclo fora do Revit (stubs da API). |
 | `teste_integracao.py` | Roda o script **inteiro** contra um Revit falso, em 13 cenários, para pegar erro de execução que os testes de função pura não pegam. |
 | `Diagnostico.dyn` / `.py` | Grafo de uma página só, sem entradas, que testa o ambiente do nó Python etapa por etapa. Use quando o nó principal devolver `null`. |
+| `MarcarParedes.dyn` / `.py` | Grava um texto no parâmetro de texto de todas as paredes do escopo (modelo / vista / seleção). Útil para limpar ou padronizar `Comentários` antes do ciclo `marcar`. |
 
 ---
 
@@ -278,3 +279,44 @@ Depois de editar, rode `python3 dynamo/gerar_dyn.py` para regenerar o `.dyn`
 
 `List.Chop` fatia por **contagem**, não por posição nem por papel — é o que fazia as
 cores escorregarem quando a casa tinha um número variável de elementos.
+
+
+---
+
+## MarcarParedes — gravar/limpar um parâmetro de texto em todas as paredes
+
+Grafo separado, para preparar o terreno antes do ciclo `marcar`.
+
+| Porta | Valores | Padrão |
+|---|---|---|
+| `escopo` | `"modelo"` (todas as paredes colocadas), `"vista"`, `"selecao"` | `"modelo"` |
+| `texto` | o texto a gravar; `""` **limpa** o parâmetro | `"PARAM_MARCA0"` |
+| `parametro` | nome do parâmetro de texto | `"Comentarios"` |
+| `executar` | `true` / `false` | `false` |
+
+Só pega **instâncias colocadas** (`WhereElementIsNotElementType`), então tipos de parede
+que existem no projeto mas não foram usados ficam de fora.
+
+Parâmetros nativos são buscados primeiro pelo `BuiltInParameter`
+(`ALL_MODEL_INSTANCE_COMMENTS`, `ALL_MODEL_MARK`), então funciona em Revit pt-BR e en-US
+sem ajuste.
+
+**Isto sobrescreve dado existente.** Três travas:
+
+1. `executar = false` por padrão — a simulação lista quantas paredes seriam alteradas e
+   **quais valores seriam perdidos**, agrupados por conteúdo distinto.
+2. `OUT[1]` traz `id | tipo | valor_antes | valor_depois`. A coluna `valor_antes` é o
+   seu backup — guarde antes de gravar. Não há desfazer no script (no Revit, Ctrl+Z
+   desfaz a transação inteira).
+3. `APENAS_VAZIOS = True` no topo do `.py`: só escreve onde o parâmetro está vazio.
+   Nenhum valor existente é perdido. Comece por aqui se tiver qualquer dúvida.
+
+Parâmetro somente leitura é detectado e pulado, não causa erro. Rodar duas vezes seguidas
+não faz nada na segunda.
+
+### Nota sobre o nome
+
+`PARAM_MARCACAO` no `PintarFachadas.py` é o **nome de uma variável do script**, não um
+valor para gravar no modelo. A linha `PARAM_MARCACAO = "Comentários"` diz apenas *em qual
+parâmetro* o script escreve. Gravar o texto literal `PARAM_MARCA0` em todas as paredes
+deixa todas com o mesmo valor, o que torna impossível agrupá-las por ele.

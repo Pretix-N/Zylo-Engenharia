@@ -1,0 +1,317 @@
+{
+  "Uuid": "e7e1f5ce-bd8d-44c2-911d-db2d6f5a6758",
+  "IsCustomNode": false,
+  "Description": "Grava um texto no parametro de todas as paredes do escopo.",
+  "Name": "MarcarParedes",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "NodeType": "CodeBlockNode",
+      "Code": "\"modelo\";",
+      "Id": "40b30382-fff0-455b-b314-e140e6910af0",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "8ab051f1-579a-43b2-8a12-1a7facbcc240",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "escopo: \"modelo\", \"vista\" ou \"selecao\""
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "NodeType": "CodeBlockNode",
+      "Code": "\"PARAM_MARCA0\";",
+      "Id": "1a0651a3-6a01-4500-b8b8-0b3d6f85080d",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "a5026a8a-b0a8-46c1-aaaf-3f762685df83",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "texto a gravar; \"\" limpa o parametro"
+    },
+    {
+      "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
+      "NodeType": "CodeBlockNode",
+      "Code": "\"Comentarios\";",
+      "Id": "9408e66b-322b-49fc-9b3e-ab441d4a8cff",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "faa50c97-a703-4e0a-9e35-dd60690d9feb",
+          "Name": "",
+          "Description": "Value of expression at line 1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "nome do parametro de texto"
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "NodeType": "BooleanInputNode",
+      "InputValue": false,
+      "Id": "727c1e4f-d649-48ff-b72c-de841b0c1663",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "51e48674-6582-43b0-970f-8386d4c0acaf",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Selection between a true and false."
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "NodeType": "PythonScriptNode",
+      "Code": "# -*- coding: utf-8 -*-\n\"\"\"\nMarcarParedes \u2014 grava um texto no par\u00e2metro de todas as paredes do modelo.\n\nENTRADAS (portas IN):\n    IN[0]  escopo    : \"modelo\"  -> todas as paredes colocadas no documento\n                       \"vista\"   -> s\u00f3 as paredes vis\u00edveis na vista ativa\n                       \"selecao\" -> s\u00f3 o que estiver selecionado no Revit\n    IN[1]  texto     : o texto a gravar (ex.: \"PARAM_MARCA0\"). Use \"\" para LIMPAR.\n    IN[2]  parametro : nome do par\u00e2metro de texto (ex.: \"Coment\u00e1rios\", \"Marca\")\n    IN[3]  executar  : bool -> False = simula\u00e7\u00e3o, n\u00e3o altera nada\n\nSA\u00cdDA (OUT):\n    [resumo, detalhe]   detalhe = id | tipo | valor_antes | valor_depois\n\nANTES DE LIGAR 'executar':\n    Isto SOBRESCREVE o par\u00e2metro em todas as paredes do escopo. Rode primeiro em\n    simula\u00e7\u00e3o e GUARDE a coluna 'valor_antes' do detalhe \u2014 \u00e9 o seu backup. N\u00e3o h\u00e1\n    desfazer no script; no Revit, Ctrl+Z desfaz a transa\u00e7\u00e3o inteira.\n\nEngine: CPython3.\n\"\"\"\n\nimport clr\n\nclr.AddReference('RevitAPI')\nclr.AddReference('RevitServices')\n\nimport Autodesk.Revit.DB as DB\nfrom RevitServices.Persistence import DocumentManager\nfrom RevitServices.Transactions import TransactionManager\n\n\n# ---------------------------------------------------------------------------\n# Ajustes\n# ---------------------------------------------------------------------------\n\n# True = s\u00f3 escreve onde o par\u00e2metro est\u00e1 VAZIO. \u00c9 a op\u00e7\u00e3o n\u00e3o destrutiva:\n# nenhum valor existente \u00e9 perdido. Comece por aqui se tiver qualquer d\u00favida.\nAPENAS_VAZIOS = False\n\n# Quantas linhas de detalhe imprimir no resumo.\nLIMITE_RESUMO = 20\n\n\n# ---------------------------------------------------------------------------\n# Utilit\u00e1rios\n# ---------------------------------------------------------------------------\n\ndef _entrada(indice, padrao):\n    try:\n        valor = IN[indice]  # noqa: F821\n    except Exception:\n        return padrao\n    return padrao if valor is None else valor\n\n\ndef normalizar(texto):\n    acentos = {u'\u00e1': u'a', u'\u00e0': u'a', u'\u00e3': u'a', u'\u00e2': u'a', u'\u00e9': u'e',\n               u'\u00ea': u'e', u'\u00ed': u'i', u'\u00f3': u'o', u'\u00f4': u'o', u'\u00f5': u'o',\n               u'\u00fa': u'u', u'\u00e7': u'c'}\n    t = (texto or u\"\").lower()\n    for a, b in acentos.items():\n        t = t.replace(a, b)\n    return t\n\n\ndef nome_seguro(elemento):\n    try:\n        return elemento.Name\n    except Exception:\n        return u\"(sem nome)\"\n\n\ndef id_valor(element_id):\n    for nome in ('Value', 'IntegerValue'):\n        try:\n            return getattr(element_id, nome)\n        except Exception:\n            continue\n    return -1\n\n\n# Par\u00e2metros nativos t\u00eam nome traduzido. Buscar pelo BuiltInParameter primeiro\n# faz o script funcionar em Revit pt-BR e en-US sem mudar nada.\nBIPS_POR_NOME = {\n    \"comentarios\": 'ALL_MODEL_INSTANCE_COMMENTS',\n    \"comments\": 'ALL_MODEL_INSTANCE_COMMENTS',\n    \"marca\": 'ALL_MODEL_MARK',\n    \"mark\": 'ALL_MODEL_MARK',\n}\n\n\ndef achar_parametro(elemento, nome):\n    chave = normalizar(nome).strip()\n    nome_bip = BIPS_POR_NOME.get(chave)\n    if nome_bip:\n        bip = getattr(DB.BuiltInParameter, nome_bip, None)\n        if bip is not None:\n            try:\n                p = elemento.get_Parameter(bip)\n                if p is not None:\n                    return p\n            except Exception:\n                pass\n    try:\n        return elemento.LookupParameter(nome)\n    except Exception:\n        return None\n\n\ndef valor_atual(p):\n    try:\n        if p.HasValue:\n            return p.AsString() or u\"\"\n    except Exception:\n        pass\n    return u\"\"\n\n\n# ---------------------------------------------------------------------------\n# Coleta das paredes\n# ---------------------------------------------------------------------------\n\ndef coletar_paredes(doc, uidoc, escopo, log):\n    \"\"\"S\u00f3 inst\u00e2ncias colocadas \u2014 WhereElementIsNotElementType descarta os tipos\n    de parede que existem no projeto mas n\u00e3o foram usados.\"\"\"\n    chave = normalizar(str(escopo)).strip()\n\n    if chave == \"selecao\":\n        saida = []\n        try:\n            for eid in uidoc.Selection.GetElementIds():\n                el = doc.GetElement(eid)\n                if el is not None and isinstance(el, DB.Wall):\n                    saida.append(el)\n        except Exception as erro:\n            log.append(u\"N\u00e3o consegui ler a sele\u00e7\u00e3o: {0}\".format(erro))\n        if not saida:\n            log.append(u\"ERRO: nada selecionado, ou a sele\u00e7\u00e3o n\u00e3o tem paredes.\")\n        return saida\n\n    try:\n        if chave == \"vista\":\n            col = DB.FilteredElementCollector(doc, doc.ActiveView.Id)\n            log.append(u\"Escopo: paredes vis\u00edveis na vista ativa.\")\n        else:\n            col = DB.FilteredElementCollector(doc)\n            log.append(u\"Escopo: TODAS as paredes colocadas no documento.\")\n        col = col.OfCategory(DB.BuiltInCategory.OST_Walls).WhereElementIsNotElementType()\n        return list(col)\n    except Exception as erro:\n        log.append(u\"ERRO ao coletar paredes: {0}\".format(erro))\n        return []\n\n\n# ---------------------------------------------------------------------------\n# Execu\u00e7\u00e3o\n# ---------------------------------------------------------------------------\n\nescopo = _entrada(0, \"modelo\")\ntexto = _entrada(1, \"PARAM_MARCA0\")\nnome_param = _entrada(2, \"Coment\u00e1rios\")\nexecutar = bool(_entrada(3, False))\n\ntexto = u\"\" if texto is None else u\"{0}\".format(texto)\n\nresumo = []\ndetalhe = []\n\n\ndef principal():\n    doc = DocumentManager.Instance.CurrentDBDocument\n    uidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\n\n    paredes = coletar_paredes(doc, uidoc, escopo, resumo)\n    if not paredes:\n        return [resumo, detalhe]\n\n    resumo.append(u\"{0} parede(s) no escopo.\".format(len(paredes)))\n    resumo.append(u\"Par\u00e2metro alvo: '{0}'\".format(nome_param))\n    resumo.append(u\"Texto a gravar: {0}\".format(\n        u\"(VAZIO \u2014 vai LIMPAR o par\u00e2metro)\" if texto == u\"\" else u\"'{0}'\".format(texto)))\n    if APENAS_VAZIOS:\n        resumo.append(u\"APENAS_VAZIOS ligado: s\u00f3 grava onde o par\u00e2metro est\u00e1 vazio.\")\n\n    # levanta o estado atual antes de qualquer escrita\n    plano, sem_param, ja_ok, protegidos = [], 0, 0, 0\n    for el in paredes:\n        p = achar_parametro(el, nome_param)\n        if p is None:\n            sem_param += 1\n            continue\n        if p.IsReadOnly:\n            protegidos += 1\n            continue\n        antes = valor_atual(p)\n        if antes == texto:\n            ja_ok += 1\n            continue\n        if APENAS_VAZIOS and antes != u\"\":\n            continue\n        plano.append((el, p, antes))\n\n    if sem_param:\n        resumo.append(u\"{0} parede(s) sem o par\u00e2metro '{1}'.\".format(sem_param, nome_param))\n    if protegidos:\n        resumo.append(u\"{0} parede(s) com o par\u00e2metro somente leitura.\".format(protegidos))\n    if ja_ok:\n        resumo.append(u\"{0} parede(s) j\u00e1 estavam com esse valor.\".format(ja_ok))\n\n    # o que vai ser PERDIDO \u2014 \u00e9 o que importa antes de apertar o bot\u00e3o\n    com_conteudo = [(el, antes) for el, _, antes in plano if antes != u\"\"]\n    if com_conteudo:\n        resumo.append(u\"\")\n        resumo.append(u\"ATEN\u00c7\u00c3O: {0} parede(s) t\u00eam conte\u00fado em '{1}' que ser\u00e1 \"\n                      u\"SOBRESCRITO:\".format(len(com_conteudo), nome_param))\n        distintos = {}\n        for _, antes in com_conteudo:\n            distintos[antes] = distintos.get(antes, 0) + 1\n        for valor, n in sorted(distintos.items(), key=lambda kv: kv[1], reverse=True)[:10]:\n            resumo.append(u\"   '{0}'  ({1}x)\".format(valor[:60], n))\n        if len(distintos) > 10:\n            resumo.append(u\"   ... mais {0} valor(es) distinto(s)\".format(len(distintos) - 10))\n        resumo.append(u\"Guarde a coluna 'valor_antes' do OUT[1]: \u00e9 o seu backup.\")\n        resumo.append(u\"\")\n\n    for el, _, antes in plano[:LIMITE_RESUMO]:\n        detalhe.append([id_valor(el.Id), nome_seguro(el), antes, texto])\n    for el, _, antes in plano[LIMITE_RESUMO:]:\n        detalhe.append([id_valor(el.Id), nome_seguro(el), antes, texto])\n\n    resumo.append(u\"{0} parede(s) seriam alteradas.\".format(len(plano)))\n\n    if not executar:\n        resumo.insert(0, u\"*** SIMULA\u00c7\u00c3O \u2014 nada foi alterado. \"\n                         u\"Ligue 'executar' para gravar. ***\")\n        return [resumo, detalhe]\n\n    TransactionManager.Instance.EnsureInTransaction(doc)\n    ok, falhas = 0, []\n    for el, p, _ in plano:\n        try:\n            p.Set(texto)\n            ok += 1\n        except Exception as erro:\n            falhas.append((id_valor(el.Id), str(erro)))\n    TransactionManager.Instance.TransactionTaskDone()\n\n    resumo.append(u\"GRAVADO em {0} parede(s).\".format(ok))\n    if falhas:\n        resumo.append(u\"{0} falha(s):\".format(len(falhas)))\n        for eid, msg in falhas[:20]:\n            resumo.append(u\"   id {0}: {1}\".format(eid, msg))\n    return [resumo, detalhe]\n\n\ntry:\n    OUT = principal()\nexcept Exception:\n    import traceback\n    resumo.append(u\"=== ERRO NAO TRATADO \u2014 copie o bloco abaixo ===\")\n    for _l in traceback.format_exc().splitlines():\n        resumo.append(_l)\n    OUT = [resumo, detalhe]\n",
+      "Engine": "CPython3",
+      "EngineName": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "390bec34-69e9-4a49-addf-a1a27dc58a3d",
+      "Inputs": [
+        {
+          "Id": "3cf2d007-a713-41a0-90d7-ab16cad3826a",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "8409719f-684c-4287-af28-9f3d45f9ee74",
+          "Name": "IN[1]",
+          "Description": "Input #1",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "3b4fcf98-890a-4972-91d0-b21579b98ea5",
+          "Name": "IN[2]",
+          "Description": "Input #2",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        },
+        {
+          "Id": "6505fe1c-06c1-4e61-a065-d95e6278ecd1",
+          "Name": "IN[3]",
+          "Description": "Input #3",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "d79084e9-3e28-4be8-a89d-e847efb59e91",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "0283806f-c451-4114-84c6-512cfeb0fe32",
+      "Inputs": [
+        {
+          "Id": "a73f93fe-2c47-4872-aa98-66dd86607eaf",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "0b662cc6-a81a-4bb8-b84f-96a82e9c5c1e",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output."
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "8ab051f1-579a-43b2-8a12-1a7facbcc240",
+      "End": "3cf2d007-a713-41a0-90d7-ab16cad3826a",
+      "Id": "f6baee62-3e9b-433e-8195-2c86240c2ed6",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "a5026a8a-b0a8-46c1-aaaf-3f762685df83",
+      "End": "8409719f-684c-4287-af28-9f3d45f9ee74",
+      "Id": "838ef004-07d5-4132-9eb8-e64127082579",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "faa50c97-a703-4e0a-9e35-dd60690d9feb",
+      "End": "3b4fcf98-890a-4972-91d0-b21579b98ea5",
+      "Id": "10d7e002-eca6-4ff4-b5f8-ffbe6eb4a27f",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "51e48674-6582-43b0-970f-8386d4c0acaf",
+      "End": "6505fe1c-06c1-4e61-a065-d95e6278ecd1",
+      "Id": "80840f4d-c3b3-4777-bfa9-350a9d6a7d2a",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "d79084e9-3e28-4be8-a89d-e847efb59e91",
+      "End": "a73f93fe-2c47-4872-aa98-66dd86607eaf",
+      "Id": "ed6b6647-defe-4677-965b-2d9af694701c",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "EnableLegacyPolyCurveBehavior": true,
+  "Thumbnail": "",
+  "GraphDocumentationURL": null,
+  "ExtensionWorkspaceData": [],
+  "Author": "",
+  "Linting": {
+    "activeLinter": "None",
+    "activeLinterId": "7b75fb44-43fd-4631-a878-29f4d5d8399a",
+    "warningCount": 0,
+    "errorCount": 0
+  },
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": false,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.13.1.3887",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "_Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "ConnectorPins": [],
+    "NodeViews": [
+      {
+        "Id": "40b30382-fff0-455b-b314-e140e6910af0",
+        "Name": "escopo",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "Id": "1a0651a3-6a01-4500-b8b8-0b3d6f85080d",
+        "Name": "texto",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 110.0
+      },
+      {
+        "Id": "9408e66b-322b-49fc-9b3e-ab441d4a8cff",
+        "Name": "parametro",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 220.0
+      },
+      {
+        "Id": "727c1e4f-d649-48ff-b72c-de841b0c1663",
+        "Name": "executar",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 0.0,
+        "Y": 330.0
+      },
+      {
+        "Id": "390bec34-69e9-4a49-addf-a1a27dc58a3d",
+        "Name": "MarcarParedes",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 400.0,
+        "Y": 120.0
+      },
+      {
+        "Id": "0283806f-c451-4114-84c6-512cfeb0fe32",
+        "Name": "resumo",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 760.0,
+        "Y": 120.0
+      }
+    ],
+    "Annotations": [],
+    "X": 60.0,
+    "Y": 60.0,
+    "Zoom": 0.9
+  }
+}
