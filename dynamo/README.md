@@ -1,125 +1,129 @@
 # PintarFachadas — paleta de 8 trios em fachadas lado a lado (Dynamo / Revit)
 
-Arquivos:
+Cada **casa** recebe **exatamente 3 cores**, não importa de quantos elementos ela seja
+feita. A casa é repartida em **3 faixas** e a faixa inteira recebe uma cor do trio.
+A partir da casa 9 a paleta reinicia.
 
 | Arquivo | O que é |
 |---|---|
-| `PintarFachadas.dyn` | Grafo pronto: 3 Code Blocks + 1 Boolean + 1 nó Python. Abra e rode. |
+| `PintarFachadas.dyn` | Grafo pronto: 4 Code Blocks + 1 Boolean + 1 nó Python. Abra e rode. |
 | `PintarFachadas.py` | O código do nó Python, versionado à parte para poder ser revisado/diffado. |
 | `gerar_dyn.py` | Regenera o `.dyn` depois que você editar o `.py`. Rode `python3 dynamo/gerar_dyn.py`. |
-| `teste_logica.py` | Testa HEX, ordenação, agrupamento e ciclo fora do Revit (stubs da API). Rode `python3 dynamo/teste_logica.py`. |
+| `teste_logica.py` | Testa HEX, detecção de casas, faixas e ciclo fora do Revit (stubs da API). |
 
 ---
 
-## Leia isto antes de rodar — 4 problemas da abordagem pedida
+## O problema que esta versão resolve
 
-**1. `Element.OverrideColorInView` não pinta o modelo, pinta uma vista.**
-Ele grava um override gráfico na vista ativa. Não vai para outras vistas, não aparece
-em Realista, não vai para renderização, não existe em schedule e some se alguém
-resetar os overrides. Para estudo de fachada em elevação serve; para entregar cor
-como informação do modelo, não. Por isso o script tem três modos — veja abaixo.
+A primeira versão assumia **3 elementos por casa** e fatiava a lista ordenada de 3 em 3.
+Numa fachada real a casa tem 8, 12, 30 elementos — o trio escorregava por cima das
+divisas e cada casa saía multicolorida.
 
-**2. Ordenar tudo pelo X e fatiar de 3 em 3 só funciona se os 3 elementos da casa
-estiverem lado a lado no eixo.** Se as 3 faixas forem empilhadas (mesmo X), o X delas
-empata e a ordem dentro da casa fica indefinida — a casa recebe as 3 cores certas, mas
-embaralhadas, e isso é silencioso: você não vê o erro no relatório, só na tela.
-O script resolve com um desempate explícito (eixo principal → eixo secundário → Z) e
-com um `ORDEM_INTERNA` que define em qual eixo as cores 1/2/3 são distribuídas.
+Agora são dois passos independentes:
 
-**3. Fatiar de 3 em 3 é frágil.** Basta você selecionar 1 elemento a mais (uma soleira,
-uma parede interna que veio junto) para *todas* as casas a partir dali deslocarem o trio.
-Se o total não for múltiplo de 3, o script avisa em vez de aplicar cor errada calado.
-Se sua seleção não é confiável, use `agrupamento = "gap"` (quebra pelo vão entre casas)
-ou `"parametro"` (agrupa por um parâmetro de texto, ex.: Comentários = "CASA 07") —
-esse último é o único 100% determinístico.
+1. **Onde termina uma casa e começa a outra** (`casas`)
+2. **Repartir cada casa em 3 faixas** (`faixas`) — 1 cor por faixa, N elementos por faixa
 
-**4. `List.Cycle` é desnecessário.** Módulo sobre o índice da casa (`i % 8`) já faz o
-ciclo e não depende de você calcular quantas repetições gerar. É o que o script usa.
+Uma casa com 30 elementos continua com 3 cores.
+
+---
+
+## Entradas
+
+| Porta | Valores | Padrão |
+|---|---|---|
+| `eixo` | `"AUTO"`, `"X"`, `"Y"` — eixo em que a fileira se estende | `"AUTO"` |
+| `modo` | `"override"`, `"material"`, `"paint"`, `"limpar"` | `"override"` |
+| `casas` | um **número inteiro**, `"gap"`, `"parametro"`, `"trios"` | `"gap"` |
+| `faixas` | `"EIXO"`, `"X"`, `"Y"`, `"Z"`, `"AUTO"` | `"EIXO"` |
+| `executar` | `true` / `false` | `false` (simulação) |
+
+### `casas` — como separar uma casa da outra
+
+| Valor | Como funciona | Quando usar |
+|---|---|---|
+| **número** (ex.: `24;`) | Divide a extensão total da fileira nesse número de fatias iguais. | **Casas geminadas** (encostadas) e de largura uniforme. É o modo mais previsível: você conta as casas na elevação e digita. |
+| `"gap"` | Quebra onde há vão livre maior que metade da largura típica do elemento. | Casas isoladas, com recuo visível entre elas. Se achar **uma casa só**, ele avisa — é sinal de que são geminadas: use o número. |
+| `"parametro"` | Agrupa pelo valor de um parâmetro de texto (`PARAM_GRUPO`, padrão `Comentários`). | O único 100% determinístico. Vale o trabalho de preencher se a fileira for irregular. |
+| `"trios"` | Modo antigo: fatia de 3 em 3. | Só se cada casa tiver exatamente 3 elementos. |
+
+### `faixas` — como as 3 cores se distribuem dentro da casa
+
+- `"EIXO"` (padrão) — mesmo eixo da fileira: **3 listras verticais** por casa.
+- `"Z"` — **3 faixas horizontais empilhadas** (térreo / meio / topo).
+- `"X"` / `"Y"` — força um eixo específico.
+- `"AUTO"` — escolhe o eixo de maior dispersão média dentro das casas.
+
+O método de repartição fica em `FAIXAS_METODO` no `.py`:
+`"extensao"` (padrão, divide a largura da casa em 3 partes iguais) ou
+`"quantil"` (as 3 faixas ficam com ~o mesmo número de elementos).
 
 ---
 
 ## Como usar
 
 1. Abra o `.dyn` no Dynamo (Revit 2021+ / Dynamo 2.7+, engine CPython3).
-2. Vá para a **vista onde a cor deve aparecer** (a elevação da fileira, normalmente).
+2. Vá para a **vista onde a cor deve aparecer**.
 3. **No Revit**, selecione os elementos das fachadas. O script lê a seleção do Revit,
-   não um nó de seleção do Dynamo — assim você troca a seleção e reroda sem remontar
-   o grafo. Grupos do Revit são expandidos automaticamente.
-4. Volte ao Dynamo e rode com `executar = false`. Isso **não altera nada**: a saída
-   `OUT[0]` traz o resumo e `OUT[1]` a tabela `casa | trio | posição | hex | id | nome`.
-   Confira que o nº de casas bate e que não apareceu nenhum aviso.
+   não um nó de seleção do Dynamo. Grupos do Revit são expandidos automaticamente.
+4. Volte ao Dynamo, deixe `executar = false` e rode. **Nada é alterado.** Leia `OUT[0]`:
+
+```
+*** SIMULAÇÃO — ligue 'executar' para aplicar. ***
+Eixo da fileira (AUTO) -> X  (dispersão X=1840.0 ft, Y=32.0 ft)
+Tolerância de vão automática: 2.00 ft (metade da largura típica do elemento).
+Faixas repartidas no eixo X (listras verticais)
+412 elemento(s) -> 24 casa(s) [vão entre casas] -> 3 faixas por casa -> trios 1..8 em ciclo.
+Distribuição casa -> total (faixa1/faixa2/faixa3):
+   casa 1: 17 elem (6/5/6)
+   casa 2: 18 elem (6/6/6)
+   ...
+```
+
+A linha de **distribuição** é o que vale conferir: se as casas aparecerem com contagens
+coerentes entre si, a detecção acertou. Se aparecer `24 casa(s)` quando você tem 24
+casas, pode aplicar. Se aparecer `1 casa(s)` ou `180 casa(s)`, troque o `casas`.
+
 5. Vire `executar = true` e rode.
 
-### Entradas
-
-| Porta | Valores | Padrão |
-|---|---|---|
-| `eixo` | `"X"`, `"Y"`, `"AUTO"` | `"AUTO"` — usa o eixo de maior dispersão |
-| `modo` | `"override"`, `"material"`, `"paint"` | `"override"` |
-| `agrupamento` | `"trios"`, `"gap"`, `"parametro"` | `"trios"` |
-| `executar` | `true` / `false` | `false` (simulação) |
-
-Os demais ajustes ficam no topo do `.py`, no bloco `2. AJUSTES`:
-`ORDEM_INTERNA`, `INVERTER_ORDEM_INTERNA`, `INVERTER_ORDEM_CASAS`, `TOLERANCIA_GAP`,
-`PARAM_GRUPO`, `CATEGORIAS_FALLBACK`, `DIRECAO_FACHADA`, `PREFIXO_MATERIAL`.
-
-### Os três modos
-
-| Modo | O que faz | Quando usar | Limite |
-|---|---|---|---|
-| `override` | `View.SetElementOverrides` na vista ativa: cor de preenchimento de superfície (hachura sólida), de corte e de linha. | Estudo cromático, prancha de apresentação. | Só naquela vista. Ignorado em Realista. |
-| `material` | Cria/reusa materiais `ZYLO_FACHADA_<HEX>` e grava no parâmetro de material da instância. | Partes (Parts), modelos genéricos e famílias com parâmetro de material de instância. | **Parede comum não tem** parâmetro de material de instância — o material está no tipo. Nesses casos o script reporta a falha por elemento em vez de fingir sucesso. |
-| `paint` | Cria os materiais e usa `Document.Paint` na face de fachada de cada elemento. | Paredes comuns. É a única forma paramétrica que funciona em parede sem duplicar tipo. | Escolhe a face pela `DIRECAO_FACHADA`. Se a fileira não olha para −Y (eixo X) ou −X (eixo Y), defina o vetor à mão. |
-
-Recomendação: rode `override` primeiro para validar a ordenação visualmente (é
-reversível e barato) e só depois troque para `paint`/`material`.
+Se o resultado ficar errado, `modo = "limpar"` com `executar = true` remove os overrides
+e a pintura dos elementos selecionados.
 
 ---
 
-## Versão só com nós OOTB (se você quiser o grafo "nativo")
+## Os quatro modos de pintura
 
-Dá para fazer sem Python. É mais frágil pelos motivos 2 e 3 acima, mas o encadeamento é:
+| Modo | O que faz | Limite |
+|---|---|---|
+| `override` | `View.SetElementOverrides` na vista ativa: preenchimento de superfície (hachura sólida), corte e linha. | **Só naquela vista.** Não vai para render, schedule ou Realista, e some se resetarem os overrides. Bom para estudo e prancha; ruim como informação de modelo. |
+| `material` | Cria/reusa materiais `ZYLO_FACHADA_<HEX>` e grava no parâmetro de material da instância. | **Parede comum não tem** parâmetro de material de instância — está no tipo. Funciona em Parts, modelos genéricos e famílias preparadas. Falhas são reportadas por elemento. |
+| `paint` | Cria os materiais e usa `Document.Paint` na face de fachada. | A única via paramétrica que funciona em parede sem duplicar tipo. Escolhe a face pela `DIRECAO_FACHADA` (padrão: −Y se a fileira corre em X). |
+| `limpar` | Remove overrides da vista e a pintura feita por este script. | — |
 
-```
-Select Model Elements
-   └─> Element.BoundingBox ─> BoundingBox.MinPoint ─> Point.X ──┐
-   └──────────────────────────────────────────────> List.SortByKey(list, keys)
-                                                          └─> .sortedList
-```
+Recomendação: valide a separação das casas com `override` (reversível e barato) antes
+de partir para `paint`.
 
-E um Code Block para a paleta + ciclo, que substitui `List.Cycle` por módulo:
+---
 
-```designscript
-paleta = [
-  [Color.ByARGB(255,250,214,140), Color.ByARGB(255,213,73,56),  Color.ByARGB(255,243,209,226)], // Trio 1
-  [Color.ByARGB(255,249,238,158), Color.ByARGB(255,248,156,19), Color.ByARGB(255,245,169,146)], // Trio 2
-  [Color.ByARGB(255,175,220,177), Color.ByARGB(255,255,211,0),  Color.ByARGB(255,250,214,140)], // Trio 3
-  [Color.ByARGB(255,205,231,246), Color.ByARGB(255,97,187,91),  Color.ByARGB(255,249,238,158)], // Trio 4
-  [Color.ByARGB(255,166,179,213), Color.ByARGB(255,56,165,204), Color.ByARGB(255,175,220,177)], // Trio 5
-  [Color.ByARGB(255,197,163,213), Color.ByARGB(255,54,85,139),  Color.ByARGB(255,205,231,246)], // Trio 6
-  [Color.ByARGB(255,243,209,226), Color.ByARGB(255,91,38,108),  Color.ByARGB(255,166,179,213)], // Trio 7
-  [Color.ByARGB(255,245,169,146), Color.ByARGB(255,165,55,102), Color.ByARGB(255,197,163,213)]  // Trio 8
-];
+## Ajustes no `.py`
 
-// 24 cores na ordem casa1-cor1, casa1-cor2, ... casa8-cor3
-plana = Flatten(paleta, 1);
+`FAIXAS_METODO`, `INVERTER_ORDEM_FAIXAS`, `INVERTER_ORDEM_CASAS`, `TOLERANCIA_GAP`,
+`PARAM_GRUPO`, `CATEGORIAS_FALLBACK`, `DIRECAO_FACHADA`, `PREFIXO_MATERIAL`.
 
-// um índice por elemento, já ordenado
-n     = List.Count(sortedList);
-idx   = 0..(n-1);
+Depois de editar, rode `python3 dynamo/gerar_dyn.py` para regenerar o `.dyn`
+(ou cole o `.py` direto no nó Python dentro do Dynamo).
 
-// o ciclo: casa 9 volta ao trio 1 sem List.Cycle
-cores = plana[idx % 24];
-```
+---
 
-```
-sortedList ──┐
-cores      ──┴─> Element.OverrideColorInView   (lacing: Shortest, ambas as listas planas)
-```
+## Por que não dá para fazer isso só com nós OOTB
 
-Duas armadilhas nessa versão:
-- `plana[idx % 24]` só está correto se a lista ordenada estiver exatamente na sequência
-  `casa1-el1, casa1-el2, casa1-el3, casa2-el1, …`. Com faixas empilhadas (mesmo X) isso
-  **não** é garantido — o `List.SortByKey` não define desempate. Aí não tem jeito: ou
-  você acrescenta uma segunda chave de ordenação, ou usa o script Python.
-- Se `n` não for múltiplo de 3, tudo depois do elemento extra sai deslocado, sem aviso.
+O grafo `List.SortByKey` + `List.Chop(3)` + `List.Cycle` + `Element.OverrideColorInView`
+resolve o caso "3 elementos por casa" e nada além dele. Ele não tem como:
+
+- descobrir onde uma casa termina (precisa de clusterização por vão ou de fatiar a
+  extensão total, nenhum dos dois é um nó);
+- repartir N elementos em 3 faixas por coordenada;
+- desempatar a ordem quando os elementos da casa compartilham a mesma coordenada.
+
+`List.Chop` fatia por contagem, não por posição — e é exatamente isso que faz as cores
+escorregarem quando a casa tem um número variável de elementos.

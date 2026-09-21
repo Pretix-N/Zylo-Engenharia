@@ -29,7 +29,7 @@ def boolean(valor):
         "Description": "Selection between a true and false.",
     }
 
-entradas = [porta("IN[{0}]".format(i), "Input #{0}".format(i), i) for i in range(4)]
+entradas = [porta("IN[{0}]".format(i), "Input #{0}".format(i), i) for i in range(5)]
 py = {
     "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
     "NodeType": "PythonScriptNode", "Code": CODIGO,
@@ -41,24 +41,25 @@ py = {
     "Description": "Runs an embedded Python script.",
 }
 
-cb_eixo  = code_block('"AUTO";', 'eixo: "X", "Y" ou "AUTO"')
-cb_modo  = code_block('"override";', 'modo: "override", "material" ou "paint"')
-cb_grupo = code_block('"trios";', 'agrupamento: "trios", "gap" ou "parametro"')
+cb_eixo  = code_block('"AUTO";', 'eixo da fileira: "AUTO", "X" ou "Y"')
+cb_modo  = code_block('"override";', 'modo: "override", "material", "paint" ou "limpar"')
+cb_casas = code_block('"gap";', 'casas: um numero (qtd de casas), "gap", "parametro" ou "trios"')
+cb_faixa = code_block('"EIXO";', 'eixo das 3 faixas na casa: "EIXO", "X", "Y", "Z" ou "AUTO"')
 bl_exec  = boolean(False)
 
-nos = [cb_eixo, cb_modo, cb_grupo, bl_exec, py]
+nos = [cb_eixo, cb_modo, cb_casas, cb_faixa, bl_exec, py]
 
 conexoes = []
-for origem, destino in zip([cb_eixo, cb_modo, cb_grupo, bl_exec], entradas):
+for origem, destino in zip([cb_eixo, cb_modo, cb_casas, cb_faixa, bl_exec], entradas):
     conexoes.append({"Start": origem["Outputs"][0]["Id"], "End": destino["Id"],
                      "Id": g(), "IsHidden": "False"})
 
 titulos = {cb_eixo["Id"]: "eixo", cb_modo["Id"]: "modo",
-           cb_grupo["Id"]: "agrupamento", bl_exec["Id"]: "executar",
-           py["Id"]: "PintarFachadas"}
+           cb_casas["Id"]: "casas", cb_faixa["Id"]: "faixas",
+           bl_exec["Id"]: "executar", py["Id"]: "PintarFachadas"}
 posicoes = {cb_eixo["Id"]: (0, 0), cb_modo["Id"]: (0, 110),
-            cb_grupo["Id"]: (0, 220), bl_exec["Id"]: (0, 330),
-            py["Id"]: (380, 120)}
+            cb_casas["Id"]: (0, 220), cb_faixa["Id"]: (0, 330),
+            bl_exec["Id"]: (0, 440), py["Id"]: (400, 170)}
 
 node_views = []
 for n in nos:
@@ -69,7 +70,7 @@ for n in nos:
 
 grafo = {
     "Uuid": g(), "IsCustomNode": False, "Description":
-        "Aplica 8 trios de cores em fachadas de casas lado a lado (ciclo por modulo).",
+        "Aplica 8 trios de cores em casas lado a lado: 3 faixas por casa, 1 cor por faixa.",
     "Name": "PintarFachadas",
     "ElementResolver": {"ResolutionMap": {}},
     "Inputs": [], "Outputs": [],
