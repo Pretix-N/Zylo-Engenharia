@@ -32,15 +32,32 @@ class Cat(object):
     def __init__(self, i, nome): self.Id, self.Name = Id(i), nome
 
 
+class Par(object):
+    StorageType = 2                      # DB.StorageType.String
+    def __init__(self, valor=""): self.valor, self.IsReadOnly = valor, False
+    @property
+    def HasValue(self): return bool(self.valor)
+    def AsString(self): return self.valor
+    def AsValueString(self): return self.valor
+    def AsElementId(self): return Id(-1)
+    def Set(self, v): self.valor = v; return True
+
+
+class Nivel(object):
+    def __init__(self, eid, elev): self.Id, self.Elevation = Id(eid), elev
+
+
 class Elem(object):
     Parameters = []
-    def __init__(self, eid, nome, cat, bb, group=None):
+    def __init__(self, eid, nome, cat, bb, group=None, nivel=None):
         self.Id, self.Name, self.Category, self._bb = Id(eid), nome, cat, bb
         self.GroupId = Id(group) if group is not None else Id(-1)
+        self.LevelId = Id(nivel) if nivel is not None else Id(-1)
+        self._pars = {"Comentários": Par()}
     def get_BoundingBox(self, v): return self._bb
     def GetTypeId(self): return Id(-1)
     def get_Parameter(self, bip): return None
-    def LookupParameter(self, n): return None
+    def LookupParameter(self, n): return self._pars.get(n)
 
 
 class Group(Elem):
@@ -104,7 +121,7 @@ class DBMod(types.ModuleType):
     Options = type("Opt", (), {})
     ViewDetailLevel = type("VDL", (), {"Fine": 1})
     FillPatternTarget = type("FPT", (), {"Drafting": 1})
-    StorageType = type("ST", (), {"ElementId": 1})
+    StorageType = type("ST", (), {"ElementId": 1, "String": 2})
     SpecTypeId = type("STI", (), {"Reference": type("R", (), {"Material": 1})})
     BuiltInParameter = type("BIP", (), {})
     Category = type("C", (), {"GetCategory": staticmethod(lambda doc, bic: Cat(bic, "cat"))})
@@ -161,13 +178,13 @@ def modelo():
             eid = 1000 + c * 100 + j
             elementos.append(Elem(eid, "PINTURA ACRILICA SIMPLES EM PAREDE", PAREDE,
                                   BBox(P(base + j * 10, 0, 0), P(base + (j + 1) * 10, 1, 10)),
-                                  group=9000 + c))
+                                  group=9000 + c, nivel=500))
             membros.append(eid)
         for j in range(3):
             eid = 1050 + c * 100 + j
             elementos.append(Elem(eid, "EMASSAMENTO, LIXAMENTO E PINTURA", PAREDE,
                                   BBox(P(base + j * 10, 0, 10), P(base + (j + 1) * 10, 1, 20)),
-                                  group=9000 + c))
+                                  group=9000 + c, nivel=501))
             membros.append(eid)
         eid = 1090 + c * 100
         elementos.append(Elem(eid, "900 x 2100", JANELA,
@@ -175,7 +192,8 @@ def modelo():
         membros.append(eid)
         g = Group(9000 + c, membros, BBox(P(base, 0, 0), P(base + 30, 1, 20)))
         grupos.append(g); sel.append(9000 + c)
-    return Doc(elementos + grupos), sel
+    niveis = [Nivel(500, 0.0), Nivel(501, 10.0)]
+    return Doc(elementos + grupos + niveis), sel
 
 
 falhas = []
@@ -257,6 +275,43 @@ else:
             falhas.append("relatorio de erro sem o traceback:\n%s" % texto)
         else:
             print("[erro nao tratado] virou relatorio legivel, nao null")
+
+checar("nivel do Revit decide cima/baixo", ["X", "override", "grupo", "fachada", False],
+       None, esperado_em="pelo nível do Revit")
+
+# --- ciclo marcar -> revisar -> pintar pela marcacao ------------------------
+doc_m, sel_m = modelo()
+saida = None
+try:
+    saida = rodar(["X", "marcar", "grupo", "fachada", True], doc_m, sel_m)
+except Exception as e:
+    falhas.append("modo marcar: EXCECAO %s: %s" % (type(e).__name__, e))
+if saida:
+    texto = "\n".join(saida[0])
+    if "Aplicado em 70" not in texto:
+        falhas.append("modo marcar nao gravou os 70:\n%s" % texto)
+    else:
+        print("[marcar] gravou a decisao em 70 elementos")
+    # o que foi gravado deve ser lido de volta
+    gravados = [e for e in doc_m._m.values()
+                if hasattr(e, "_pars") and e._pars["Comentários"].valor.startswith("ZYLO:")]
+    if len(gravados) != 70:
+        falhas.append("esperava 70 marcados, achei %d" % len(gravados))
+    exemplo = gravados[0]._pars["Comentários"].valor
+    print("[marcar] exemplo gravado:", exemplo)
+    # agora pinta lendo da marcacao, sem adivinhar nada
+    try:
+        out2 = rodar(["X", "override", "marcacao", "parametro", False], doc_m, sel_m)
+    except Exception as e:
+        falhas.append("pintar pela marcacao: EXCECAO %s: %s" % (type(e).__name__, e))
+    else:
+        t2 = "\n".join(out2[0])
+        if "papel lido da marcação" not in t2:
+            falhas.append("nao leu o papel da marcacao:\n%s" % t2)
+        elif "10 casa(s)" not in t2:
+            falhas.append("marcacao nao reconstruiu as 10 casas:\n%s" % t2)
+        else:
+            print("[marcacao] 10 casas e 70 papeis lidos do parametro, zero adivinhacao")
 
 print()
 if falhas:

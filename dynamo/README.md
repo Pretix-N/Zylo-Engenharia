@@ -29,6 +29,11 @@ O script classifica cada elemento pelo **centro do bounding box**. Consequência
 > em cima e embaixo com cores diferentes.** A parede inteira tem um centro só, cai
 > num lado só, e a casa sai com 2 cores em vez de 3.
 
+Isso nem sempre é defeito: numa fileira real, as casas térreas de volume simples
+costumam aparecer mesmo com corpo + esquadria (2 cores), enquanto a divisão em duas
+faixas aparece nas de dois pavimentos. O aviso `papel vazio` é informação, não erro —
+compare com a referência antes de tentar forçar 3 cores em toda casa.
+
 Para ter a faixa de cima e a de baixo você precisa de **dois elementos separados** —
 duas paredes empilhadas, ou a parede dividida em **Parts** (`Modify > Create Parts`,
 depois `Divide Parts` na altura da faixa). Não tem contorno: override gráfico atua no
@@ -43,9 +48,9 @@ O resumo avisa quando isso acontece: `AVISO: N casa(s) com algum papel vazio`.
 | Porta | Valores | Padrão |
 |---|---|---|
 | `eixo` | `"AUTO"`, `"X"`, `"Y"` — eixo em que a fileira se estende | `"AUTO"` |
-| `modo` | `"override"`, `"material"`, `"paint"`, `"limpar"` | `"override"` |
-| `casas` | `"grupo"`, um **número**, `"gap"`, `"parametro"`, `"trios"` | `"grupo"` |
-| `faixas` | `"fachada"`, `"EIXO"`, `"X"`, `"Y"`, `"Z"`, `"AUTO"` | `"fachada"` |
+| `modo` | `"override"`, `"material"`, `"paint"`, `"marcar"`, `"limpar"` | `"override"` |
+| `casas` | `"grupo"`, `"marcacao"`, um **número**, `"gap"`, `"parametro"`, `"trios"` | `"grupo"` |
+| `faixas` | `"fachada"`, `"parametro"`, `"EIXO"`, `"X"`, `"Y"`, `"Z"`, `"AUTO"` | `"fachada"` |
 | `executar` | `true` / `false` | `false` (simulação) |
 
 ### `casas` — como separar uma casa da outra
@@ -67,9 +72,33 @@ O resumo avisa quando isso acontece: `AVISO: N casa(s) com algum papel vazio`.
 
 ---
 
+## Quando a adivinhação não converge: marcar, revisar, pintar
+
+Em modelo de levantamento de serviço, as paredes são nomeadas pelo serviço
+(`LIMPEZA NO AZULEIJO`, `PINTURA ACRILICA`), não pela posição. Nenhuma regra automática
+acerta 100% das casas nesse tipo de modelo — e insistir em ajustar a regra é o caminho
+para dez scripts ruins seguidos.
+
+O ciclo que converge:
+
+1. **Marcar** — `modo = "marcar"`, `executar = true`. O script grava a decisão dele em
+   `PARAM_MARCACAO` (padrão `Comentários`) no formato `ZYLO:casa=7;papel=cima`.
+   **Sobrescreve o conteúdo atual do parâmetro** nos elementos do plano.
+2. **Revisar** — no Revit, crie uma tabela (Schedule) de Paredes com as colunas
+   `Comentários` + `Família e tipo`. Ordene por `Comentários`. Corrija na mão o que
+   ficou errado: trocar `papel=cima` por `papel=baixo`, mover um elemento de casa, etc.
+3. **Pintar** — `casas = "marcacao"`, `faixas = "parametro"`. Agora o script não adivinha
+   nada: pinta exatamente o que a tabela diz. Elemento sem marcação cai nas regras
+   automáticas e é contado separadamente no relatório.
+
+A partir daí o resultado é reprodutível e auditável: se uma casa sair errada, você vê
+na tabela por quê, corrige a linha e roda de novo.
+
+---
+
 ## Ordem das regras de classificação
 
-Cada elemento passa por estas quatro regras, na ordem. A primeira que decidir, manda.
+Cada elemento passa por estas regras, na ordem. A primeira que decidir, manda.
 
 1. **Moldura por categoria** — `CATEGORIAS_MOLDURA`, padrão `OST_Windows` e `OST_Doors`.
 2. **Moldura por nome** — `PALAVRAS_MOLDURA`: `moldura`, `esquadria`, `marco`,
@@ -77,9 +106,12 @@ Cada elemento passa por estas quatro regras, na ordem. A primeira que decidir, m
 3. **Cima/baixo por nome** — `PALAVRAS_CIMA` / `PALAVRAS_BAIXO`. Se o modelo já
    nomeia a parede pela posição (`... PAREDE DE BAIXO`, `... EM BAIXO`), o nome
    vence a geometria. Nome que bate nas duas listas cai para a regra 4.
-4. **Cima/baixo pela cota de corte** — `CORTE_ALTURA` (fração da altura da casa,
+4. **Cima/baixo pelo nível do Revit** (`CORTE_POR_NIVEL = True`) — se as paredes da
+   casa estão em níveis diferentes, o nível mais baixo é `baixo` e os demais são `cima`.
+   É a divisão térreo × pavimento superior, que segue a arquitetura em vez de adivinhar.
+5. **Cima/baixo pela cota de corte** — `CORTE_ALTURA` (fração da altura da casa,
    padrão `0.5`) ou `CORTE_ABSOLUTO` (cota Z fixa em pés).
-5. **Equilíbrio** (`EQUILIBRAR_FAIXAS = True`) — se depois do corte todas as paredes
+6. **Equilíbrio** (`EQUILIBRAR_FAIXAS = True`) — se depois do corte todas as paredes
    da casa caírem do mesmo lado, redivide pela mediana de Z para que cima e baixo
    fiquem ambos preenchidos. Só age quando um dos dois ficaria vazio. Casa com uma
    parede só continua sem divisão: não há o que dividir.
@@ -216,6 +248,7 @@ Deu errado? `modo = "limpar"` com `executar = true` remove os overrides e a pint
 | `override` | `View.SetElementOverrides` na vista ativa. | **Só naquela vista.** Não vai para render, schedule ou Realista. Bom para estudo e prancha. |
 | `material` | Cria/reusa materiais `ZYLO_FACHADA_<HEX>` no parâmetro de material da instância. | **Parede comum não tem** esse parâmetro na instância. Funciona em Parts, modelos genéricos e famílias preparadas. Falhas reportadas por elemento. |
 | `paint` | Cria os materiais e usa `Document.Paint` na face de fachada. | Única via paramétrica em parede sem duplicar tipo. Face escolhida por `DIRECAO_FACHADA`. |
+| `marcar` | Grava a decisão do script em `PARAM_MARCACAO` em vez de pintar. | Sobrescreve o parâmetro. É a etapa 1 do ciclo marcar → revisar → pintar. |
 | `limpar` | Remove overrides e a pintura feita por este script. | — |
 
 Valide a separação com `override` antes de partir para `paint`.

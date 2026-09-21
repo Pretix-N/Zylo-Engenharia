@@ -83,6 +83,12 @@ PALAVRAS_BAIXO = ["parede de baixo", "de baixo", "em baixo", "embaixo",
 PALAVRAS_CIMA = ["parede de cima", "de cima", "em cima", "superior",
                  "pavimento superior", "oitao", "platibanda"]
 
+# Regra 2a: se as paredes da casa estao em NIVEIS diferentes do Revit, o nivel
+# mais baixo e "baixo" e os demais sao "cima". E a divisao que a referencia
+# mostra: terreo numa cor, pavimento superior em outra. Vale mais que qualquer
+# corte por altura, porque segue a arquitetura em vez de adivinhar.
+CORTE_POR_NIVEL = True
+
 # Se, depois do corte, TODAS as paredes da casa caírem do mesmo lado (acontece
 # quando as paredes da casa estão todas na mesma altura), redivide pela mediana
 # de Z para que cima e baixo fiquem ambos preenchidos. Só age quando um dos dois
@@ -140,6 +146,14 @@ CATEGORIAS_FALLBACK = [
 DIRECAO_FACHADA = None
 
 PREFIXO_MATERIAL = "ZYLO_FACHADA_"
+
+# modo == "marcar" grava a decisao do script neste parametro de texto, no
+# formato  ZYLO:casa=7;papel=cima  — dai voce revisa numa tabela do Revit,
+# corrige o que ficou errado na mao, e roda de novo com casas="marcacao" e
+# faixas="parametro" para pintar exatamente o que a tabela diz.
+# ATENCAO: sobrescreve o conteudo atual do parametro nos elementos do plano.
+PARAM_MARCACAO = "Comentários"
+PREFIXO_MARCACAO = "ZYLO:"
 
 FAIXAS_POR_CASA = 3
 
@@ -284,6 +298,36 @@ def _chave_do_grupo(elemento):
     return None
 
 
+def elevacao_do_nivel(elemento, doc):
+    """Cota do nivel de referencia do elemento, ou None se nao houver."""
+    candidatos = []
+    try:
+        candidatos.append(elemento.LevelId)
+    except Exception:
+        pass
+    for nome_bip in ('WALL_BASE_CONSTRAINT', 'FAMILY_LEVEL_PARAM',
+                     'SCHEDULE_LEVEL_PARAM', 'INSTANCE_SCHEDULE_ONLY_LEVEL_PARAM'):
+        bip = getattr(DB.BuiltInParameter, nome_bip, None)
+        if bip is None:
+            continue
+        try:
+            p = elemento.get_Parameter(bip)
+            if p is not None:
+                candidatos.append(p.AsElementId())
+        except Exception:
+            continue
+    for lid in candidatos:
+        try:
+            if lid is None or id_valor(lid) <= 0:
+                continue
+            nivel = doc.GetElement(lid)
+            if nivel is not None:
+                return float(nivel.Elevation)
+        except Exception:
+            continue
+    return None
+
+
 def textos_do_elemento(elemento, doc):
     """Nome do elemento, do tipo, da família e da categoria — para classificar."""
     textos = []
@@ -356,6 +400,7 @@ def coletar(doc, uidoc, log):
             cat_id, cat_nome = -1, u"?"
         dados.append({'el': el, 'bb': bb, 'c': centro(bb), 'casa': chave,
                       'cat_id': cat_id, 'cat': cat_nome,
+                      'nivel': elevacao_do_nivel(el, doc),
                       'textos': textos_do_elemento(el, doc)})
     return dados
 
@@ -538,12 +583,19 @@ def papel_por_nome(d):
 
 def repartir_fachada(grupo, ids_moldura, stats=None):
     """cima / baixo / moldura.
-    Ordem das regras: moldura por categoria -> moldura por nome ->
-    cima/baixo por nome -> cima/baixo pela cota de corte da casa."""
+
+    Cadeia de regras, da mais confiavel para a mais chutada:
+      1. moldura por categoria (Portas/Janelas)
+      2. moldura por palavra no nome
+      3. cima/baixo por palavra no nome
+      4. cima/baixo pelo NIVEL do Revit (terreo x pavimento superior)
+      5. cima/baixo pela cota de corte da casa
+      6. equilibrio pela mediana, se tudo caiu de um lado so
+    """
     if stats is None:
         stats = {}
     papeis = {"cima": [], "baixo": [], "moldura": []}
-    parede, por_geometria = [], []
+    parede, sobrando = [], []
 
     for d in grupo:
         motivo = motivo_moldura(d, ids_moldura)
@@ -557,12 +609,23 @@ def repartir_fachada(grupo, ids_moldura, stats=None):
             papeis[nome].append(d)
             stats["parede_nome"] = stats.get("parede_nome", 0) + 1
         else:
-            por_geometria.append(d)
+            sobrando.append(d)
 
-    if not por_geometria:
+    if not sobrando:
         return papeis
 
-    # a cota de corte sai da altura da parede da casa (molduras não contam)
+    # regra 4: niveis diferentes -> terreo embaixo, o resto em cima
+    if CORTE_POR_NIVEL:
+        niveis = sorted(set(d['nivel'] for d in sobrando if d.get('nivel') is not None))
+        if len(niveis) >= 2:
+            base = niveis[0]
+            for d in sobrando:
+                z = d.get('nivel')
+                papeis["baixo" if (z is not None and z <= base + 1e-6) else "cima"].append(d)
+            stats["parede_nivel"] = stats.get("parede_nivel", 0) + len(sobrando)
+            return papeis
+
+    # regra 5: cota de corte, calculada sobre a parede da casa
     if CORTE_ABSOLUTO is not None:
         corte = float(CORTE_ABSOLUTO)
     else:
@@ -571,24 +634,99 @@ def repartir_fachada(grupo, ids_moldura, stats=None):
         corte = z0 + (z1 - z0) * float(CORTE_ALTURA)
 
     geom = {"cima": [], "baixo": []}
-    for d in por_geometria:
+    for d in sobrando:
         geom["cima" if d['c'][2] >= corte else "baixo"].append(d)
 
-    # o corte por extensão falha quando as paredes da casa estão todas na mesma
-    # altura: elas caem todas de um lado e a casa perde uma cor.
+    # regra 6: o corte falha quando as paredes estao todas na mesma altura
     ja_tem_os_dois = bool(papeis["cima"]) and bool(papeis["baixo"])
-    if (EQUILIBRAR_FAIXAS and not ja_tem_os_dois and len(por_geometria) >= 2
+    if (EQUILIBRAR_FAIXAS and not ja_tem_os_dois and len(sobrando) >= 2
             and (not geom["cima"] or not geom["baixo"])):
-        ordenados = sorted(por_geometria, key=lambda d: d['c'][2])
+        ordenados = sorted(sobrando, key=lambda q: q['c'][2])
         meio = len(ordenados) // 2
         geom = {"baixo": ordenados[:meio], "cima": ordenados[meio:]}
-        stats["parede_equilibrada"] = (stats.get("parede_equilibrada", 0)
-                                       + len(ordenados))
+        stats["parede_equilibrada"] = stats.get("parede_equilibrada", 0) + len(ordenados)
     else:
-        stats["parede_geom"] = stats.get("parede_geom", 0) + len(por_geometria)
+        stats["parede_geom"] = stats.get("parede_geom", 0) + len(sobrando)
 
     papeis["cima"].extend(geom["cima"])
     papeis["baixo"].extend(geom["baixo"])
+    return papeis
+
+
+def ler_marcacao(d):
+    """(casa, papel) gravados por modo='marcar', ou (None, None)."""
+    try:
+        p = d['el'].LookupParameter(PARAM_MARCACAO)
+        if p is None or not p.HasValue:
+            return (None, None)
+        texto = p.AsString() or u""
+    except Exception:
+        return (None, None)
+    if not texto.startswith(PREFIXO_MARCACAO):
+        return (None, None)
+    casa, papel = None, None
+    for parte in texto[len(PREFIXO_MARCACAO):].split(";"):
+        if "=" not in parte:
+            continue
+        chave, valor = parte.split("=", 1)
+        chave, valor = chave.strip().lower(), valor.strip()
+        if chave == "casa" and valor:
+            casa = valor
+        elif chave == "papel" and valor.lower() in PAPEIS:
+            papel = valor.lower()
+    return (casa, papel)
+
+
+def escrever_marcacao(elemento, casa, papel):
+    try:
+        p = elemento.LookupParameter(PARAM_MARCACAO)
+    except Exception:
+        return False
+    if p is None or p.IsReadOnly:
+        return False
+    try:
+        if p.StorageType != DB.StorageType.String:
+            return False
+    except Exception:
+        pass
+    p.Set(u"{0}casa={1};papel={2}".format(PREFIXO_MARCACAO, casa, papel))
+    return True
+
+
+def casas_por_marcacao(dados, eixo, log):
+    """Cada casa vem do que esta gravado no parametro — zero adivinhacao."""
+    baldes, sem = {}, 0
+    for d in dados:
+        casa, _ = ler_marcacao(d)
+        if casa is None:
+            sem += 1
+            continue
+        baldes.setdefault(casa, []).append(d)
+    if sem:
+        log.append(u"AVISO: {0} elemento(s) sem marcação em '{1}' — ficaram de fora. "
+                   u"Rode antes com modo='marcar'.".format(sem, PARAM_MARCACAO))
+    if not baldes:
+        log.append(u"ERRO: nenhum elemento marcado. Rode primeiro com modo='marcar', "
+                   u"revise a tabela no Revit, e só então use casas='marcacao'.")
+    return list(baldes.values())
+
+
+def repartir_por_marcacao(grupo, ids_moldura, stats):
+    """Papel lido do parâmetro. O que não estiver marcado cai nas regras
+    automáticas, e o relatório diz quantos foram de cada jeito."""
+    papeis = {"cima": [], "baixo": [], "moldura": []}
+    restantes = []
+    for d in grupo:
+        _, papel = ler_marcacao(d)
+        if papel in papeis:
+            papeis[papel].append(d)
+            stats["papel_marcado"] = stats.get("papel_marcado", 0) + 1
+        else:
+            restantes.append(d)
+    if restantes:
+        automatico = repartir_fachada(restantes, ids_moldura, stats)
+        for chave in papeis:
+            papeis[chave].extend(automatico[chave])
     return papeis
 
 
@@ -830,7 +968,7 @@ def principal():
     uidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument
     vista = doc.ActiveView
 
-    MODOS = ("override", "material", "paint", "limpar")
+    MODOS = ("override", "material", "paint", "marcar", "limpar")
 
     if modo not in MODOS:
         resumo.append(u"ERRO: modo '{0}' desconhecido. Use: {1}.".format(modo, ", ".join(MODOS)))
@@ -872,7 +1010,10 @@ def principal():
                 metodo_casas = u"{0} casas iguais".format(numero_casas)
             else:
                 chave = normalizar(str(casas_pedido)).strip()
-                if chave == "grupo":
+                if chave == "marcacao":
+                    grupos = casas_por_marcacao(dados, eixo, resumo)
+                    metodo_casas = u"marcação em '{0}'".format(PARAM_MARCACAO)
+                elif chave == "grupo":
                     grupos = casas_por_grupo(dados, eixo, resumo)
                     metodo_casas = u"blocos (Group) do Revit"
                 elif chave == "parametro":
@@ -895,7 +1036,9 @@ def principal():
                     grupos.reverse()
 
                 # --- passo 2: repartir cada casa ---
-                por_papel = normalizar(str(faixas_pedido)).strip() == "fachada"
+                chave_faixas = normalizar(str(faixas_pedido)).strip()
+                por_marcacao = chave_faixas == "parametro"
+                por_papel = por_marcacao or chave_faixas == "fachada"
 
                 ids_moldura = set()
                 if por_papel:
@@ -921,7 +1064,10 @@ def principal():
                     trio = PALETA_HEX[trio_idx]
 
                     if por_papel:
-                        papeis = repartir_fachada(grupo, ids_moldura, stats)
+                        if por_marcacao:
+                            papeis = repartir_por_marcacao(grupo, ids_moldura, stats)
+                        else:
+                            papeis = repartir_fachada(grupo, ids_moldura, stats)
                         partes = [(PAPEL_DAS_CORES[k], papeis.get(PAPEL_DAS_CORES[k], []))
                                   for k in range(3)]
                     else:
@@ -949,15 +1095,18 @@ def principal():
                 resumo.append(u"Modo: {0} | eixo da fileira: {1}".format(modo, "XYZ"[eixo]))
 
                 if por_papel:
-                    resumo.append(u"Como cada elemento foi classificado: "
-                                  u"moldura por categoria={0}, moldura por nome={1}, "
-                                  u"parede por nome={2}, parede pela cota de corte={3}, "
-                                  u"parede redividida pela mediana={4}.".format(
-                                      stats.get("moldura_categoria", 0),
-                                      stats.get("moldura_nome", 0),
-                                      stats.get("parede_nome", 0),
-                                      stats.get("parede_geom", 0),
-                                      stats.get("parede_equilibrada", 0)))
+                    resumo.append(u"Como cada elemento foi classificado, da regra "
+                                  u"mais confiável para a mais chutada:")
+                    for _rot, _ch in (
+                            (u"papel lido da marcação (revisado por você)", "papel_marcado"),
+                            (u"moldura por categoria (Portas/Janelas)", "moldura_categoria"),
+                            (u"moldura por palavra no nome", "moldura_nome"),
+                            (u"cima/baixo por palavra no nome", "parede_nome"),
+                            (u"cima/baixo pelo nível do Revit", "parede_nivel"),
+                            (u"cima/baixo pela cota de corte", "parede_geom"),
+                            (u"cima/baixo redividido pela mediana", "parede_equilibrada")):
+                        if stats.get(_ch):
+                            resumo.append(u"   {0}: {1}".format(_rot, stats[_ch]))
 
                 # quais papéis ficaram vazios, e em quantas casas — é o que diz se o
                 # problema é a regra de classificação ou a geometria do modelo
@@ -986,6 +1135,12 @@ def principal():
                     detalhe.append([p['casa'], p['trio'], p['papel'], p['hex'],
                                     id_valor(p['el'].Id), nome_seguro(p['el'])])
 
+                if modo == "marcar":
+                    resumo.append(u"MODO MARCAR: vai SOBRESCREVER o parâmetro '{0}' de "
+                                  u"{1} elemento(s) com a decisão do script. Revise numa "
+                                  u"tabela do Revit e depois rode com casas=marcacao e "
+                                  u"faixas=parametro.".format(PARAM_MARCACAO, len(plano)))
+
                 if not executar:
                     resumo.insert(0, u"*** SIMULAÇÃO — ligue 'executar' para aplicar. ***")
                     return [resumo, detalhe]
@@ -1007,7 +1162,13 @@ def principal():
                     for p in plano:
                         el = p['el']
                         try:
-                            if modo == "override":
+                            if modo == "marcar":
+                                if escrever_marcacao(el, p['casa'], p['papel']):
+                                    ok += 1
+                                else:
+                                    falhas.append((id_valor(el.Id),
+                                                   u"'{0}' não editável".format(PARAM_MARCACAO)))
+                            elif modo == "override":
                                 vista.SetElementOverrides(
                                     el.Id, montar_override(cor_revit(p['hex']), hachura))
                                 ok += 1
