@@ -77,12 +77,16 @@ Cada elemento passa por estas quatro regras, na ordem. A primeira que decidir, m
    vence a geometria. Nome que bate nas duas listas cai para a regra 4.
 4. **Cima/baixo pela cota de corte** — `CORTE_ALTURA` (fração da altura da casa,
    padrão `0.5`) ou `CORTE_ABSOLUTO` (cota Z fixa em pés).
+5. **Equilíbrio** (`EQUILIBRAR_FAIXAS = True`) — se depois do corte todas as paredes
+   da casa caírem do mesmo lado, redivide pela mediana de Z para que cima e baixo
+   fiquem ambos preenchidos. Só age quando um dos dois ficaria vazio. Casa com uma
+   parede só continua sem divisão: não há o que dividir.
 
 O relatório diz quantos elementos cada regra decidiu:
 
 ```
 Como cada elemento foi classificado: moldura por categoria=132, moldura por nome=0,
-parede por nome=2, parede pela cota de corte=189.
+parede por nome=2, parede pela cota de corte=175, parede redividida pela mediana=14.
 ```
 
 Cuidado ao acrescentar palavras curtas em `PALAVRAS_BAIXO`: em modelo de orçamento,

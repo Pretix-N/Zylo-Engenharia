@@ -83,6 +83,12 @@ PALAVRAS_BAIXO = ["parede de baixo", "de baixo", "em baixo", "embaixo",
 PALAVRAS_CIMA = ["parede de cima", "de cima", "em cima", "superior",
                  "pavimento superior", "oitao", "platibanda"]
 
+# Se, depois do corte, TODAS as paredes da casa caírem do mesmo lado (acontece
+# quando as paredes da casa estão todas na mesma altura), redivide pela mediana
+# de Z para que cima e baixo fiquem ambos preenchidos. Só age quando um dos dois
+# ficaria vazio; casa com uma parede só continua sem salvação.
+EQUILIBRAR_FAIXAS = True
+
 # Regra 2 (usada quando o nome não decide): onde a parede se divide entre
 # "baixo" e "cima", como fração da altura da casa. 0.5 = na metade.
 CORTE_ALTURA = 0.5
@@ -555,9 +561,25 @@ def repartir_fachada(grupo, ids_moldura, stats=None):
         z1 = max(d['bb'][1][2] for d in parede)
         corte = z0 + (z1 - z0) * float(CORTE_ALTURA)
 
+    geom = {"cima": [], "baixo": []}
     for d in por_geometria:
-        papeis["cima" if d['c'][2] >= corte else "baixo"].append(d)
-        stats["parede_geom"] = stats.get("parede_geom", 0) + 1
+        geom["cima" if d['c'][2] >= corte else "baixo"].append(d)
+
+    # o corte por extensão falha quando as paredes da casa estão todas na mesma
+    # altura: elas caem todas de um lado e a casa perde uma cor.
+    ja_tem_os_dois = bool(papeis["cima"]) and bool(papeis["baixo"])
+    if (EQUILIBRAR_FAIXAS and not ja_tem_os_dois and len(por_geometria) >= 2
+            and (not geom["cima"] or not geom["baixo"])):
+        ordenados = sorted(por_geometria, key=lambda d: d['c'][2])
+        meio = len(ordenados) // 2
+        geom = {"baixo": ordenados[:meio], "cima": ordenados[meio:]}
+        stats["parede_equilibrada"] = (stats.get("parede_equilibrada", 0)
+                                       + len(ordenados))
+    else:
+        stats["parede_geom"] = stats.get("parede_geom", 0) + len(por_geometria)
+
+    papeis["cima"].extend(geom["cima"])
+    papeis["baixo"].extend(geom["baixo"])
     return papeis
 
 
@@ -919,11 +941,13 @@ else:
             if por_papel:
                 resumo.append(u"Como cada elemento foi classificado: "
                               u"moldura por categoria={0}, moldura por nome={1}, "
-                              u"parede por nome={2}, parede pela cota de corte={3}.".format(
+                              u"parede por nome={2}, parede pela cota de corte={3}, "
+                              u"parede redividida pela mediana={4}.".format(
                                   stats.get("moldura_categoria", 0),
                                   stats.get("moldura_nome", 0),
                                   stats.get("parede_nome", 0),
-                                  stats.get("parede_geom", 0)))
+                                  stats.get("parede_geom", 0),
+                                  stats.get("parede_equilibrada", 0)))
 
             # quais papéis ficaram vazios, e em quantas casas — é o que diz se o
             # problema é a regra de classificação ou a geometria do modelo

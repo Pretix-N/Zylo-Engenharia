@@ -77,6 +77,9 @@ assert len(p2["cima"]) == 4 and len(p2["baixo"]) == 4, (len(p2["cima"]), len(p2[
 print("cota de corte ignora as molduras ok")
 
 # --- 5. Corte configuravel -----------------------------------------------
+# desliga o equilibrio para observar a cota de corte pura (o equilibrio existe
+# justamente para evitar o resultado "tudo de um lado" que este teste provoca)
+ns["EQUILIBRAR_FAIXAS"] = False
 # parede 0..20 -> corte em 0.9*20 = 18; nenhum centro fica acima disso
 ns["CORTE_ALTURA"] = 0.9
 p3 = ns["repartir_fachada"](casa, IDS_MOLDURA)
@@ -86,6 +89,7 @@ p3 = ns["repartir_fachada"](casa, IDS_MOLDURA)
 assert len(p3["cima"]) == 8 and len(p3["baixo"]) == 0, (len(p3["cima"]), len(p3["baixo"]))
 ns["CORTE_ALTURA"] = 0.5           # padrao: corte em 10 -> 4 em cima, 4 embaixo
 assert len(ns["repartir_fachada"](casa, IDS_MOLDURA)["cima"]) == 4
+ns["EQUILIBRAR_FAIXAS"] = True
 print("CORTE_ALTURA configuravel ok")
 
 # --- 5b. LIMITE REAL: parede unica de piso a teto nao se divide ----------
@@ -236,4 +240,37 @@ assert st.get("moldura_categoria") == 1 and st.get("moldura_nome") == 1, st
 assert st.get("parede_geom") == 1, st
 print("estatisticas de classificacao ok")
 
-print("\nTODOS OS TESTES PASSARAM (incl. nomes reais)")
+# --- 16. Equilibrio quando as paredes caem todas do mesmo lado -----------
+# 3 paredes na MESMA altura: o corte por extensao joga todas para "cima".
+mesma_altura = [elem(j * 5.0, (j + 1) * 5.0, 10.0, 20.0, "p%d" % j,
+                     textos=["PINTURA ACRILICA"]) for j in range(3)]
+st = {}
+p6 = ns["repartir_fachada"](mesma_altura, set(), st)
+assert p6["cima"] and p6["baixo"], p6
+assert len(p6["cima"]) + len(p6["baixo"]) == 3
+assert st.get("parede_equilibrada") == 3, st
+print("equilibrio de faixas quando todas caem do mesmo lado ok")
+
+# 7 paredes na mesma altura (caso da casa 43 do modelo real)
+casa43 = [elem(j * 3.0, (j + 1) * 3.0, 0.0, 8.0, "w%d" % j,
+               textos=["LIMPEZA NO AZULEIJO 20"]) for j in range(7)]
+p7 = ns["repartir_fachada"](casa43, set(), {})
+assert len(p7["baixo"]) == 3 and len(p7["cima"]) == 4, (p7["baixo"], p7["cima"])
+print("casa com 7 paredes na mesma altura vira 3/4 ok")
+
+# parede UNICA continua sem salvacao -- nao inventa uma divisao que nao existe
+p8 = ns["repartir_fachada"]([elem(0.0, 12.0, 0.0, 20.0, "so_uma",
+                                  textos=["PINTURA"])], set(), {})
+assert len(p8["cima"]) + len(p8["baixo"]) == 1 and (not p8["cima"] or not p8["baixo"])
+print("parede unica continua sem divisao (correto) ok")
+
+# nao mexe quando cima e baixo ja estao preenchidos
+st = {}
+ok_dois = [elem(0.0, 10.0, 0.0, 10.0, "b", textos=["PINTURA"]),
+           elem(0.0, 10.0, 10.0, 20.0, "c", textos=["PINTURA"])]
+p9 = ns["repartir_fachada"](ok_dois, set(), st)
+assert len(p9["baixo"]) == 1 and len(p9["cima"]) == 1
+assert st.get("parede_equilibrada") is None and st.get("parede_geom") == 2, st
+print("nao equilibra quando ja esta correto ok")
+
+print("\nTODOS OS TESTES PASSARAM (incl. nomes reais e equilibrio)")
