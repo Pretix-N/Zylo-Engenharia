@@ -156,6 +156,17 @@ CATEGORIAS_FALLBACK = [
     DB.BuiltInCategory.OST_Doors,
 ]
 
+# A PINTURA DE FACE é o que faz a cor aparecer no 3D. Com True, todas as faces
+# do elemento são pintadas — é o que você quer num 3D colorido, porque em 3D
+# você vê o volume de vários ângulos, não só a fachada. Com False, só a face que
+# olha para DIRECAO_FACHADA: bom para elevação, deixa o resto cinza no 3D.
+PINTAR_TODAS_AS_FACES = True
+
+# Opcional: põe a vista ativa em Sombreado com Arestas. Material só aparece em
+# Sombreado/Realista — em Linha Oculta e Aramado o 3D fica sem cor, e é a causa
+# mais comum de "funcionou na elevação mas não no 3D".
+AJUSTAR_ESTILO_DA_VISTA = False
+
 # modo == "paint": direção para onde a fachada olha.
 # None = deduz do eixo da fileira (fileira em X -> fachada em -Y; em Y -> -X).
 DIRECAO_FACHADA = None
@@ -976,6 +987,8 @@ def obter_material(doc, hex_texto, cache, hachura_id):
         if hachura_id != DB.ElementId.InvalidElementId:
             achado.SurfaceForegroundPatternId = hachura_id
             achado.SurfaceForegroundPatternColor = cor
+            achado.CutForegroundPatternId = hachura_id
+            achado.CutForegroundPatternColor = cor
     except Exception:
         pass
     cache[nome] = achado
@@ -1093,7 +1106,13 @@ def aplicar_material(elemento, material):
 
 
 def faces_da_fachada(elemento, direcao):
-    """Faces planas verticais que melhor apontam para `direcao`."""
+    """Faces a pintar.
+
+    PINTAR_TODAS_AS_FACES = True devolve TODAS as faces do sólido, que é o que
+    colore o elemento inteiro no 3D. False devolve só as faces planas verticais
+    que apontam para `direcao` — suficiente para a elevação, mas deixa o volume
+    cinza nos outros ângulos.
+    """
     opcoes = DB.Options()
     opcoes.ComputeReferences = True
     opcoes.IncludeNonVisibleObjects = False
@@ -1114,6 +1133,13 @@ def faces_da_fachada(elemento, direcao):
     except Exception:
         return []
 
+    if PINTAR_TODAS_AS_FACES:
+        todas = []
+        for solido in solidos:
+            for face in solido.Faces:
+                todas.append(face)
+        return todas
+
     candidatas = []
     for solido in solidos:
         for face in solido.Faces:
@@ -1131,6 +1157,41 @@ def faces_da_fachada(elemento, direcao):
     candidatas.sort(key=lambda t: t[0], reverse=True)
     melhor = candidatas[0][0]
     return [f for pontuacao, f in candidatas if pontuacao >= melhor * 0.6]
+
+
+# Aramado e Linha Oculta nao mostram cor de material — so linha e hachura.
+ESTILOS_SEM_COR = ("wireframe", "hlr")
+
+
+def diagnosticar_vista(vista, modo, log):
+    """Diz se a vista ativa consegue mostrar o que o modo escolhido produz.
+    É aqui que se pega o 'funcionou na elevação mas não no 3D'."""
+    try:
+        tipo = u"{0}".format(vista.ViewType)
+    except Exception:
+        tipo = u"?"
+    try:
+        estilo = u"{0}".format(vista.DisplayStyle)
+    except Exception:
+        estilo = u"?"
+    log.append(u"Vista ativa: '{0}' | tipo {1} | estilo {2}".format(
+        nome_seguro(vista), tipo, estilo))
+
+    if modo == "override":
+        log.append(u"ATENÇÃO: 'override' pinta SÓ esta vista. Em 3D, em outra "
+                   u"elevação e no render não aparece nada. Para a cor viver no "
+                   u"modelo, use modo='material'.")
+        return
+
+    if modo in ("material", "paint") and normalizar(estilo) in ESTILOS_SEM_COR:
+        log.append(u"ATENÇÃO: a vista está em '{0}'. Material NÃO aparece nesse "
+                   u"estilo — nem sombreado, nem pintura de face. Mude para "
+                   u"Sombreado com Arestas ou Realista. Esta é a causa mais comum "
+                   u"de 'funcionou na elevação mas não no 3D'. Ou ponha "
+                   u"AJUSTAR_ESTILO_DA_VISTA = True.".format(estilo))
+    elif modo in ("material", "paint"):
+        log.append(u"Estilo OK para material. Lembre: em Realista quem manda é a "
+                   u"aparência; em Sombreado, a cor do material.")
 
 
 def limpar(doc, vista, elementos):
@@ -1202,6 +1263,7 @@ def principal():
 
         else:
             inventario(dados, resumo)
+            diagnosticar_vista(vista, modo, resumo)
             eixo = escolher_eixo(dados, eixo_pedido, resumo)
 
             # --- passo 1: separar as casas ---
@@ -1451,6 +1513,13 @@ def principal():
 
                     # ---- fase 3: aplicar (uma transacao) ----------------------
                     TransactionManager.Instance.EnsureInTransaction(doc)
+                    if AJUSTAR_ESTILO_DA_VISTA and modo in ("material", "paint"):
+                        try:
+                            vista.DisplayStyle = DB.DisplayStyle.ShadingWithEdges
+                            resumo.append(u"Vista ativa mudada para Sombreado com Arestas.")
+                        except Exception as erro:
+                            resumo.append(u"Não consegui mudar o estilo da vista: "
+                                          u"{0}".format(erro))
                     ok, falhas = 0, []
                     por_estrategia = {}
                     tipos_recusados = set()

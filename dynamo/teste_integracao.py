@@ -98,6 +98,8 @@ class Group(Elem):
 class View(object):
     Id = Id(1)
     Name = "Elevacao Sul"
+    ViewType = "ThreeD"
+    DisplayStyle = "HLR"          # Linha Oculta: material NAO aparece
     def __init__(self): self.overrides = {}
     def AreGraphicsOverridesAllowed(self): return True
     def SetElementOverrides(self, eid, ogs): self.overrides[eid.Value] = ogs
@@ -170,6 +172,7 @@ class DBMod(types.ModuleType):
     PlanarFace = Face
     Options = type("Opt", (), {})
     ViewDetailLevel = type("VDL", (), {"Fine": 1})
+    DisplayStyle = type("DS", (), {"ShadingWithEdges": "ShadingWithEdges"})
     FillPatternTarget = type("FPT", (), {"Drafting": 1})
     StorageType = type("ST", (), {"ElementId": 1, "String": 2})
     SpecTypeId = type("STI", (), {"Reference": type("R", (), {"Material": 1})})
@@ -537,6 +540,46 @@ else:
         falhas.append("casa 1 nao usou o trio 1: %s" % por_casa[1]["cores"])
     else:
         print("[marcatipo] casa 9 = cores da casa 1, casa 10 = cores da casa 2")
+
+# --- 3D: avisar quando o estilo da vista nao mostra material ---------------
+doc_v, sel_v = modelo()
+try:
+    out_v = rodar(["X", "material", "marcatipo", "fachada", False], doc_v, sel_v)
+except Exception as e:
+    falhas.append("diagnostico de vista: EXCECAO %s: %s" % (type(e).__name__, e))
+else:
+    txt = "\n".join(out_v[0])
+    if "Vista ativa:" not in txt:
+        falhas.append("nao descreveu a vista:\n%s" % txt)
+    elif "Material N" not in txt:      # "Material NAO aparece nesse estilo"
+        falhas.append("nao avisou que HLR nao mostra material:\n%s" % txt)
+    else:
+        print("[3d] avisa que Linha Oculta nao mostra material")
+
+# override tem que gritar que so vale naquela vista
+try:
+    out_o = rodar(["X", "override", "marcatipo", "fachada", False], doc_v, sel_v)
+except Exception as e:
+    falhas.append("aviso do override: EXCECAO %s" % e)
+else:
+    if "pinta S" not in "\n".join(out_o[0]):   # "pinta SO esta vista"
+        falhas.append("override nao avisou que e so da vista:\n%s"
+                      % "\n".join(out_o[0]))
+    else:
+        print("[3d] override avisa que vale so na vista ativa")
+
+# todas as faces pintadas: e o que da cor ao volume em 3D
+del MATERIAIS[:]
+doc_f, sel_f = modelo()
+try:
+    rodar(["X", "material", "marcatipo", "fachada", True], doc_f, sel_f)
+except Exception as e:
+    falhas.append("pintar todas as faces: EXCECAO %s" % e)
+else:
+    if len(getattr(doc_f, "pintado", {})) != 70:
+        falhas.append("nem todos os elementos foram pintados")
+    else:
+        print("[3d] todas as faces pintadas: volume colorido de qualquer angulo")
 
 print()
 if falhas:

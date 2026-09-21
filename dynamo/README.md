@@ -312,6 +312,39 @@ Deu errado? `modo = "limpar"` com `executar = true` remove os overrides e a pint
 | `marcar` | Grava a decisão do script em `PARAM_MARCACAO` em vez de pintar. | Sobrescreve o parâmetro. É a etapa 1 do ciclo marcar → revisar → pintar. |
 | `limpar` | Remove overrides e a pintura feita por este script. | — |
 
+### Por que "funcionou na elevação mas não no 3D"
+
+Três causas, em ordem de frequência:
+
+1. **O modo era `override`.** Override é gráfico **de vista**: vale só na vista ativa.
+   Em 3D, em outra elevação e no render não aparece nada. Use `modo = "material"`.
+2. **O estilo visual do 3D é Linha Oculta ou Aramado.** Material não aparece nesses
+   estilos — nem cor de sombreado, nem pintura de face. Precisa de **Sombreado com
+   Arestas** ou **Realista**. `AJUSTAR_ESTILO_DA_VISTA = True` faz isso pelo script.
+3. **Só a face da fachada foi pintada.** Em elevação você vê uma face só e parece certo;
+   em 3D você gira e o resto está cinza. `PINTAR_TODAS_AS_FACES = True` (padrão) pinta
+   todas as faces do sólido, e o volume fica colorido de qualquer ângulo.
+
+O script diagnostica isso sozinho. O resumo abre com:
+
+```
+Vista ativa: '3D - Fachadas' | tipo ThreeD | estilo HLR
+ATENÇÃO: a vista está em 'HLR'. Material NÃO aparece nesse estilo...
+```
+
+E qual estilo mostra o quê:
+
+| Estilo da vista | Cor de sombreado (`Material.Color`) | Aparência (render) |
+|---|---|---|
+| Aramado | não | não |
+| Linha Oculta | não (só hachura de superfície) | não |
+| **Sombreado / com Arestas** | **sim** | não |
+| **Realista** | não | **sim** |
+
+Por isso o script grava o RGB **nos dois** — cor de sombreado e aparência.
+
+---
+
 ### Como o modo `material` aplica a cor
 
 O material carrega o RGB em dois lugares: a **cor de sombreado** (`Color`, com
