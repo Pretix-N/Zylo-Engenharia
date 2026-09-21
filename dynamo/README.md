@@ -12,7 +12,7 @@ A partir da casa 9 a paleta reinicia (ciclo por módulo).
 
 | Arquivo | O que é |
 |---|---|
-| `PintarFachadas.dyn` | Grafo pronto: 4 Code Blocks + 1 Boolean + 1 nó Python. Abra e rode. |
+| `PintarFachadas.dyn` | Grafo pronto: 4 Code Blocks + 1 Boolean + 1 nó Python + 1 Watch. Abra e rode. |
 | `PintarFachadas.py` | O código do nó Python, versionado à parte para poder ser revisado/diffado. |
 | `gerar_dyn.py` | Regenera o `.dyn` depois que você editar o `.py`. `python3 dynamo/gerar_dyn.py`. |
 | `teste_logica.py` | Testa HEX, detecção de casas, papéis e ciclo fora do Revit (stubs da API). |
@@ -111,7 +111,8 @@ PAPEL_DAS_CORES = ["cima", "baixo", "moldura"]   # cor1, cor2, cor3
 2. Abra o `.dyn` no Dynamo (Revit 2021+, engine CPython3).
 3. Vá para a **vista onde a cor deve aparecer**.
 4. **No Revit**, selecione os blocos das casas.
-5. No Dynamo, `executar = false` e rode. **Nada é alterado.** Leia `OUT[0]`:
+5. No Dynamo, `executar = false` e rode. **Nada é alterado.** O Watch `resumo`
+   mostra a saída; `OUT[0]` é o relatório e `OUT[1]` a tabela por elemento:
 
 ```
 *** SIMULAÇÃO — ligue 'executar' para aplicar. ***

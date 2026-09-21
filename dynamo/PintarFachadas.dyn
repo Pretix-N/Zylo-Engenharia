@@ -1,5 +1,5 @@
 {
-  "Uuid": "60967010-6308-40aa-8c15-240978e659b0",
+  "Uuid": "b208569a-703b-4f7f-831b-94cc3de18b21",
   "IsCustomNode": false,
   "Description": "8 trios de cores em casas lado a lado: parede de cima, parede de baixo e molduras.",
   "Name": "PintarFachadas",
@@ -13,11 +13,11 @@
       "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
       "NodeType": "CodeBlockNode",
       "Code": "\"AUTO\";",
-      "Id": "42910d88-6316-409a-b920-8800ce683015",
+      "Id": "d46146b0-3916-48f8-a208-fd883a9990a7",
       "Inputs": [],
       "Outputs": [
         {
-          "Id": "dfc3ce1d-d512-48c3-b09e-30b5aca48081",
+          "Id": "da2f5e71-4482-4fcd-9be0-8ce0d834b5fc",
           "Name": "",
           "Description": "Value of expression at line 1",
           "UsingDefaultValue": false,
@@ -33,11 +33,11 @@
       "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
       "NodeType": "CodeBlockNode",
       "Code": "\"override\";",
-      "Id": "f96050b0-4409-4076-9678-ef7edde6dbea",
+      "Id": "4510ad47-8909-403e-bf98-ca629bfe04f9",
       "Inputs": [],
       "Outputs": [
         {
-          "Id": "6deaa7a3-deec-43bb-acc2-f60cbd93a75f",
+          "Id": "fdfc26e5-7aab-4502-bc5c-00a9a5285062",
           "Name": "",
           "Description": "Value of expression at line 1",
           "UsingDefaultValue": false,
@@ -53,11 +53,11 @@
       "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
       "NodeType": "CodeBlockNode",
       "Code": "\"grupo\";",
-      "Id": "ea08cac7-4447-4b05-9582-15e74aab8380",
+      "Id": "b62f6b62-40c2-4fce-8d6c-9ccdb753336b",
       "Inputs": [],
       "Outputs": [
         {
-          "Id": "64c9419f-5852-4f8d-a1ee-a764de9ae4ad",
+          "Id": "4488dc0d-e3b4-42ac-976f-323b840709fb",
           "Name": "",
           "Description": "Value of expression at line 1",
           "UsingDefaultValue": false,
@@ -73,11 +73,11 @@
       "ConcreteType": "Dynamo.Graph.Nodes.CodeBlockNodeModel, DynamoCore",
       "NodeType": "CodeBlockNode",
       "Code": "\"fachada\";",
-      "Id": "1323c1be-48ee-4238-bf2b-600a68b9cb32",
+      "Id": "04c2b06b-d549-414f-94f6-8a3ee088b0a6",
       "Inputs": [],
       "Outputs": [
         {
-          "Id": "099d2bb6-5766-412b-9603-78a6d614bfb9",
+          "Id": "25108309-ce97-4634-89fa-3dc79ad7fe23",
           "Name": "",
           "Description": "Value of expression at line 1",
           "UsingDefaultValue": false,
@@ -93,11 +93,11 @@
       "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
       "NodeType": "BooleanInputNode",
       "InputValue": false,
-      "Id": "8749ed10-e0b8-40fc-a253-0a67c606ec7f",
+      "Id": "9341f95a-6b12-4341-a0a1-b1e79267cdfc",
       "Inputs": [],
       "Outputs": [
         {
-          "Id": "8c140d70-90e0-4f28-b207-35fd9b57e6c4",
+          "Id": "6371def1-eb85-43aa-9bcb-4d96af4a6972",
           "Name": "",
           "Description": "Boolean",
           "UsingDefaultValue": false,
@@ -116,10 +116,10 @@
       "Engine": "CPython3",
       "EngineName": "CPython3",
       "VariableInputPorts": true,
-      "Id": "53167b90-849c-4768-98c4-7abb57c95c80",
+      "Id": "4cf3114d-506d-4371-bdfb-9a1d9a08b80d",
       "Inputs": [
         {
-          "Id": "bb67a8b0-6dea-4abd-9b0d-237ebc026489",
+          "Id": "26c6ffab-b66a-43ec-b163-3a33d787b22c",
           "Name": "IN[0]",
           "Description": "Input #0",
           "UsingDefaultValue": false,
@@ -128,7 +128,7 @@
           "KeepListStructure": false
         },
         {
-          "Id": "f04c6345-b85b-49e7-956a-979a9a79f54d",
+          "Id": "071d7393-2af7-4c7b-91c6-afda4bcd68ff",
           "Name": "IN[1]",
           "Description": "Input #1",
           "UsingDefaultValue": false,
@@ -137,7 +137,7 @@
           "KeepListStructure": false
         },
         {
-          "Id": "db5fac27-705d-475d-9c5a-8ea72d3d39d8",
+          "Id": "cd244ae3-5356-4b9a-9c6f-8f84126b10b8",
           "Name": "IN[2]",
           "Description": "Input #2",
           "UsingDefaultValue": false,
@@ -146,7 +146,7 @@
           "KeepListStructure": false
         },
         {
-          "Id": "ad73e966-f669-4f0d-b8c8-76fe5837a72f",
+          "Id": "df3e3a73-d981-42cc-8158-1e65525875be",
           "Name": "IN[3]",
           "Description": "Input #3",
           "UsingDefaultValue": false,
@@ -155,7 +155,7 @@
           "KeepListStructure": false
         },
         {
-          "Id": "2e281737-20af-4032-a9a0-202d2600dfd8",
+          "Id": "6dd09989-02f6-4358-a152-c5f1a0889b41",
           "Name": "IN[4]",
           "Description": "Input #4",
           "UsingDefaultValue": false,
@@ -166,7 +166,7 @@
       ],
       "Outputs": [
         {
-          "Id": "ce3584e4-2c01-4e69-8276-a8c012e87e14",
+          "Id": "bb4effe0-b439-4b3a-8c2b-c749c2deb43a",
           "Name": "OUT",
           "Description": "Result of the python script",
           "UsingDefaultValue": false,
@@ -177,37 +177,72 @@
       ],
       "Replication": "Disabled",
       "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "9d6ccb15-6f66-4bc7-a7a0-b2f3a8325a0f",
+      "Inputs": [
+        {
+          "Id": "40adbff0-640a-4640-8391-009efd478527",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "0c3dc1da-368f-49fd-a62f-bf11c27d8465",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualizes a node's output."
     }
   ],
   "Connectors": [
     {
-      "Start": "dfc3ce1d-d512-48c3-b09e-30b5aca48081",
-      "End": "bb67a8b0-6dea-4abd-9b0d-237ebc026489",
-      "Id": "d6aac755-d20a-4a77-a752-b7e02772be91",
+      "Start": "da2f5e71-4482-4fcd-9be0-8ce0d834b5fc",
+      "End": "26c6ffab-b66a-43ec-b163-3a33d787b22c",
+      "Id": "f1351f0b-03cc-4ec9-a097-4ed0dad9ccf9",
       "IsHidden": "False"
     },
     {
-      "Start": "6deaa7a3-deec-43bb-acc2-f60cbd93a75f",
-      "End": "f04c6345-b85b-49e7-956a-979a9a79f54d",
-      "Id": "a20f2a4d-7328-4460-a635-bbb041d4ddb3",
+      "Start": "fdfc26e5-7aab-4502-bc5c-00a9a5285062",
+      "End": "071d7393-2af7-4c7b-91c6-afda4bcd68ff",
+      "Id": "9d10900f-5fee-4922-8af7-983059db9279",
       "IsHidden": "False"
     },
     {
-      "Start": "64c9419f-5852-4f8d-a1ee-a764de9ae4ad",
-      "End": "db5fac27-705d-475d-9c5a-8ea72d3d39d8",
-      "Id": "4f761861-50a5-484b-b486-8d9bd8d6bd1c",
+      "Start": "4488dc0d-e3b4-42ac-976f-323b840709fb",
+      "End": "cd244ae3-5356-4b9a-9c6f-8f84126b10b8",
+      "Id": "1ed1c02d-c3c8-468f-90ff-b3b0b615cacf",
       "IsHidden": "False"
     },
     {
-      "Start": "099d2bb6-5766-412b-9603-78a6d614bfb9",
-      "End": "ad73e966-f669-4f0d-b8c8-76fe5837a72f",
-      "Id": "83d7ad94-f46d-4aca-a35f-d2db08d7dea5",
+      "Start": "25108309-ce97-4634-89fa-3dc79ad7fe23",
+      "End": "df3e3a73-d981-42cc-8158-1e65525875be",
+      "Id": "f685733a-bdb9-4cac-b481-84f13ec099c9",
       "IsHidden": "False"
     },
     {
-      "Start": "8c140d70-90e0-4f28-b207-35fd9b57e6c4",
-      "End": "2e281737-20af-4032-a9a0-202d2600dfd8",
-      "Id": "b64a57a2-03d2-49f1-94f2-5e1c82e6e9f1",
+      "Start": "6371def1-eb85-43aa-9bcb-4d96af4a6972",
+      "End": "6dd09989-02f6-4358-a152-c5f1a0889b41",
+      "Id": "c4cc579f-6d98-4c05-85f2-398a4802ffc9",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "bb4effe0-b439-4b3a-8c2b-c749c2deb43a",
+      "End": "40adbff0-640a-4640-8391-009efd478527",
+      "Id": "d1814015-a00c-470d-9fe4-acdeb3fc0dd8",
       "IsHidden": "False"
     }
   ],
@@ -249,7 +284,7 @@
     "ConnectorPins": [],
     "NodeViews": [
       {
-        "Id": "42910d88-6316-409a-b920-8800ce683015",
+        "Id": "d46146b0-3916-48f8-a208-fd883a9990a7",
         "Name": "eixo",
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
@@ -259,7 +294,7 @@
         "Y": 0.0
       },
       {
-        "Id": "f96050b0-4409-4076-9678-ef7edde6dbea",
+        "Id": "4510ad47-8909-403e-bf98-ca629bfe04f9",
         "Name": "modo",
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
@@ -269,7 +304,7 @@
         "Y": 110.0
       },
       {
-        "Id": "ea08cac7-4447-4b05-9582-15e74aab8380",
+        "Id": "b62f6b62-40c2-4fce-8d6c-9ccdb753336b",
         "Name": "casas",
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
@@ -279,7 +314,7 @@
         "Y": 220.0
       },
       {
-        "Id": "1323c1be-48ee-4238-bf2b-600a68b9cb32",
+        "Id": "04c2b06b-d549-414f-94f6-8a3ee088b0a6",
         "Name": "faixas",
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
@@ -289,7 +324,7 @@
         "Y": 330.0
       },
       {
-        "Id": "8749ed10-e0b8-40fc-a253-0a67c606ec7f",
+        "Id": "9341f95a-6b12-4341-a0a1-b1e79267cdfc",
         "Name": "executar",
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
@@ -299,13 +334,23 @@
         "Y": 440.0
       },
       {
-        "Id": "53167b90-849c-4768-98c4-7abb57c95c80",
+        "Id": "4cf3114d-506d-4371-bdfb-9a1d9a08b80d",
         "Name": "PintarFachadas",
         "IsSetAsInput": false,
         "IsSetAsOutput": false,
         "Excluded": false,
         "ShowGeometry": true,
         "X": 400.0,
+        "Y": 170.0
+      },
+      {
+        "Id": "9d6ccb15-6f66-4bc7-a7a0-b2f3a8325a0f",
+        "Name": "resumo",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "ShowGeometry": true,
+        "X": 700.0,
         "Y": 170.0
       }
     ],

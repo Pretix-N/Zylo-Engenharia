@@ -20,6 +20,17 @@ def code_block(code, desc):
         "Description": desc,
     }
 
+def watch():
+    entrada = porta("", "Node to show output from", 0)
+    saida = porta("", "Node output", 0)
+    return {
+        "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+        "NodeType": "ExtensionNode", "Id": g(),
+        "Inputs": [entrada], "Outputs": [saida], "Replication": "Disabled",
+        "Description": "Visualizes a node's output.",
+    }
+
+
 def boolean(valor):
     saida = porta("", "Boolean", 0)
     return {
@@ -46,20 +57,26 @@ cb_modo  = code_block('"override";', 'modo: "override", "material", "paint" ou "
 cb_casas = code_block('"grupo";', 'casas: "grupo" (bloco do Revit), um numero, "gap", "parametro" ou "trios"')
 cb_faixa = code_block('"fachada";', 'cores na casa: "fachada" (cima/baixo/moldura) ou "EIXO"/"X"/"Y"/"Z"/"AUTO"')
 bl_exec  = boolean(False)
+wt_saida = watch()
 
-nos = [cb_eixo, cb_modo, cb_casas, cb_faixa, bl_exec, py]
+nos = [cb_eixo, cb_modo, cb_casas, cb_faixa, bl_exec, py, wt_saida]
 
 conexoes = []
 for origem, destino in zip([cb_eixo, cb_modo, cb_casas, cb_faixa, bl_exec], entradas):
     conexoes.append({"Start": origem["Outputs"][0]["Id"], "End": destino["Id"],
                      "Id": g(), "IsHidden": "False"})
 
+conexoes.append({"Start": py["Outputs"][0]["Id"], "End": wt_saida["Inputs"][0]["Id"],
+                 "Id": g(), "IsHidden": "False"})
+
 titulos = {cb_eixo["Id"]: "eixo", cb_modo["Id"]: "modo",
            cb_casas["Id"]: "casas", cb_faixa["Id"]: "faixas",
-           bl_exec["Id"]: "executar", py["Id"]: "PintarFachadas"}
+           bl_exec["Id"]: "executar", py["Id"]: "PintarFachadas",
+           wt_saida["Id"]: "resumo"}
 posicoes = {cb_eixo["Id"]: (0, 0), cb_modo["Id"]: (0, 110),
             cb_casas["Id"]: (0, 220), cb_faixa["Id"]: (0, 330),
-            bl_exec["Id"]: (0, 440), py["Id"]: (400, 170)}
+            bl_exec["Id"]: (0, 440), py["Id"]: (400, 170),
+            wt_saida["Id"]: (700, 170)}
 
 node_views = []
 for n in nos:
