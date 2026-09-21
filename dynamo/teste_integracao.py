@@ -28,6 +28,20 @@ class BBox(object):
     def __init__(self, mn, mx): self.Min, self.Max, self.Transform = mn, mx, T()
 
 
+class Face(object):
+    def __init__(self, nx, ny, nz, area):
+        self.FaceNormal, self.Area = P(nx, ny, nz), area
+
+
+class Faces(list):
+    @property
+    def Size(self): return len(self)
+
+
+class Solid(object):
+    def __init__(self, faces): self.Faces, self.Volume = Faces(faces), 1.0
+
+
 class Cat(object):
     def __init__(self, i, nome): self.Id, self.Name = Id(i), nome
 
@@ -49,13 +63,18 @@ class Nivel(object):
 
 class Elem(object):
     Parameters = []
-    def __init__(self, eid, nome, cat, bb, group=None, nivel=None):
+    def __init__(self, eid, nome, cat, bb, group=None, nivel=None, tipo_id=None):
         self.Id, self.Name, self.Category, self._bb = Id(eid), nome, cat, bb
+        # tipos propositalmente COMPARTILHADOS entre casas, como no modelo real
+        self._tipo_id = tipo_id if tipo_id is not None else (6000 + hash(nome) % 3)
         self.GroupId = Id(group) if group is not None else Id(-1)
         self.LevelId = Id(nivel) if nivel is not None else Id(-1)
         self._pars = {"Comentários": Par()}
     def get_BoundingBox(self, v): return self._bb
-    def GetTypeId(self): return Id(-1)
+    def GetTypeId(self): return Id(self._tipo_id)
+    def get_Geometry(self, opt):
+        return [Solid([Face(0.0, -1.0, 0.0, 10.0), Face(0.0, 1.0, 0.0, 10.0),
+                       Face(0.0, 0.0, 1.0, 30.0)])]
     def get_Parameter(self, bip): return None
     def LookupParameter(self, n): return self._pars.get(n)
 
@@ -84,12 +103,30 @@ class View(object):
     def SetElementOverrides(self, eid, ogs): self.overrides[eid.Value] = ogs
 
 
+MATERIAIS = []
+ASSETS = []
+
+
+class Mat(object):
+    def __init__(self, eid, nome):
+        self.Id, self.Name = Id(eid), nome
+        self.Color = self.AppearanceAssetId = None
+        self.UseRenderAppearanceForShading = True
+        self.Transparency = 50
+        self.SurfaceForegroundPatternId = self.SurfaceForegroundPatternColor = None
+
+
 class Collector(object):
-    def __init__(self, *a): pass
-    def OfClass(self, c): return self
+    def __init__(self, *a): self._c = None
+    def OfClass(self, c): self._c = c; return self
     def OfCategory(self, c): return self
     def WhereElementIsNotElementType(self): return self
-    def __iter__(self): return iter([])
+    def __iter__(self):
+        if self._c is DBMod.Material:
+            return iter(MATERIAIS)
+        if self._c is DBMod.AppearanceAssetElement:
+            return iter(ASSETS)
+        return iter([])
 
 
 class OGS(object):
@@ -107,9 +144,13 @@ class Doc(object):
         self.ActiveView = View()
     def GetElement(self, eid):
         return self._m.get(eid.Value)
-    def IsPainted(self, eid, face): return False
-    def Paint(self, eid, face, mid): pass
-    def RemovePaint(self, eid, face): pass
+    def __init_pintura__(self):
+        self.pintado = {}
+    def IsPainted(self, eid, face): return eid.Value in getattr(self, "pintado", {})
+    def Paint(self, eid, face, mid):
+        if not hasattr(self, "pintado"): self.pintado = {}
+        self.pintado[eid.Value] = mid.Value
+    def RemovePaint(self, eid, face): getattr(self, "pintado", {}).pop(eid.Value, None)
 
 
 class Sel(object):
@@ -123,10 +164,10 @@ class DBMod(types.ModuleType):
     OverrideGraphicSettings = OGS
     FilteredElementCollector = Collector
     FillPatternElement = type("FPE", (), {})
-    Material = type("Mat", (), {})
-    Solid = type("Solid", (), {})
+    Material = Mat
+    Solid = Solid
     GeometryInstance = type("GI", (), {})
-    PlanarFace = type("PF", (), {})
+    PlanarFace = Face
     Options = type("Opt", (), {})
     ViewDetailLevel = type("VDL", (), {"Fine": 1})
     FillPatternTarget = type("FPT", (), {"Drafting": 1})
@@ -144,6 +185,17 @@ DB.BuiltInCategory = type("BIC", (), dict(
         ["OST_Walls", "OST_Parts", "OST_GenericModel", "OST_Windows", "OST_Doors",
          "OST_Roofs", "OST_Fascia", "OST_Gutter", "OST_RoofSoffit"], 1)))
 DB.Color = lambda r, g, b: ("cor", r, g, b)
+
+
+def _criar_material(doc, nome):
+    m = Mat(7000 + len(MATERIAIS), nome)
+    MATERIAIS.append(m)
+    doc._m[m.Id.Value] = m
+    return m.Id
+
+
+Mat.Create = staticmethod(_criar_material)
+DB.Material = Mat
 
 
 def instalar(doc, sel_ids):
@@ -166,11 +218,14 @@ def instalar(doc, sel_ids):
         type("TMH", (), {"Instance": tm})()
 
 
-def rodar(entradas, doc, sel_ids):
+def rodar(entradas, doc, sel_ids, ajustes=None):
     instalar(doc, sel_ids)
     ns = {"IN": entradas, "__name__": "__main__"}
-    exec(compile(open("dynamo/PintarFachadas.py", encoding="utf-8").read(),
-                 "PintarFachadas.py", "exec"), ns)
+    fonte = open("dynamo/PintarFachadas.py", encoding="utf-8").read()
+    for antes, depois in (ajustes or []):
+        assert antes in fonte, "ajuste nao encontrado: %r" % antes
+        fonte = fonte.replace(antes, depois, 1)
+    exec(compile(fonte, "PintarFachadas.py", "exec"), ns)
     return ns.get("OUT", "<<OUT NUNCA FOI DEFINIDO>>")
 
 
@@ -265,7 +320,100 @@ checar("casas por trios", ["X", "override", "trios", "fachada", False], None)
 checar("faixas geometricas Z", ["X", "override", "grupo", "Z", False], None,
        esperado_em="faixas horizontais")
 checar("faixas AUTO", ["X", "override", "grupo", "AUTO", False], None)
-checar("material", ["X", "material", "grupo", "fachada", True], None)
+# --- modo material: RGB no material, sem vazar cor entre casas -------------
+del MATERIAIS[:]
+doc_mt, sel_mt = modelo()
+try:
+    out_mt = rodar(["X", "material", "marcatipo", "fachada", True], doc_mt, sel_mt)
+except Exception as e:
+    falhas.append("modo material: EXCECAO %s: %s" % (type(e).__name__, e))
+else:
+    txt = "\n".join(out_mt[0])
+    hexes = sorted(set(l[4] for l in out_mt[1]))
+    # 10 casas -> trios 1..8,1,2 -> 8 trios x 3 = 24 cores distintas
+    if len(MATERIAIS) != len(hexes):
+        falhas.append("materiais criados (%d) != cores do plano (%d)"
+                      % (len(MATERIAIS), len(hexes)))
+    else:
+        print("[material] %d materiais criados, um por cor da paleta" % len(MATERIAIS))
+
+    # o RGB tem que estar gravado no material, nao so no nome
+    ruins = [m.Name for m in MATERIAIS if m.Color is None]
+    if ruins:
+        falhas.append("materiais sem Color: %s" % ruins[:3])
+    elif any(m.UseRenderAppearanceForShading for m in MATERIAIS):
+        falhas.append("UseRenderAppearanceForShading ficou True: a cor nao aparece")
+    else:
+        exemplo = MATERIAIS[0]
+        print("[material] RGB gravado, ex.: %s -> %s" % (exemplo.Name, exemplo.Color))
+
+    # nome do material tem que ser o HEX da paleta
+    nomes = set(m.Name for m in MATERIAIS)
+    esperados = set("ZYLO_FACHADA_" + h.lstrip("#").upper() for h in hexes)
+    if nomes != esperados:
+        falhas.append("nomes de material fora do padrao: %s" % sorted(nomes - esperados)[:3])
+    else:
+        print("[material] nomes seguem a paleta: ZYLO_FACHADA_<HEX>")
+
+    if "Aplicado em 70" not in txt:
+        falhas.append("modo material nao aplicou nos 70:\n%s" % txt)
+    else:
+        print("[material] aplicado nos 70 elementos")
+
+    if "Como o material foi aplicado" not in txt:
+        falhas.append("nao reportou a estrategia usada:\n%s" % txt)
+
+    # nenhuma casa pode ter recebido cor de outra
+    por_casa = {}
+    for casa, trio, papel, regra, hexa, eid, nome in out_mt[1]:
+        por_casa.setdefault(casa, set()).add(hexa)
+    ruins = [c for c, v in por_casa.items() if len(v) != 3]
+    if ruins:
+        falhas.append("casas sem exatamente 3 cores no modo material: %s" % ruins)
+    else:
+        print("[material] as 10 casas mantiveram exatamente 3 cores")
+
+    # a pintura de face precisa ter acontecido de verdade no documento
+    pintados = getattr(doc_mt, "pintado", {})
+    if len(pintados) != 70:
+        falhas.append("pintura de face nao chegou ao documento: %d de 70" % len(pintados))
+    else:
+        print("[material] 70 faces pintadas no documento (sem duplicar tipo)")
+
+# --- tipo compartilhado tem que ser RECUSADO, nao vazar cor ---------------
+del MATERIAIS[:]
+doc_tp, sel_tp = modelo()
+try:
+    out_tp = rodar(["X", "material", "marcatipo", "fachada", True], doc_tp, sel_tp,
+                   ajustes=[('ESTRATEGIA_MATERIAL = ["instancia", "pintura", "tipo"]',
+                             'ESTRATEGIA_MATERIAL = ["tipo"]')])
+except Exception as e:
+    falhas.append("estrategia tipo: EXCECAO %s: %s" % (type(e).__name__, e))
+else:
+    txt = "\n".join(out_tp[0])
+    if "compartilhados entre casas" not in txt:
+        falhas.append("nao recusou os tipos compartilhados:\n%s" % txt)
+    elif "Aplicado em 0" not in txt:
+        falhas.append("aplicou em tipo compartilhado — a cor vazaria:\n%s" % txt)
+    else:
+        print("[material] tipo compartilhado entre casas recusado, cor nao vazou")
+
+# --- PERMITIR_TIPO_COMPARTILHADO libera, com o risco assumido -------------
+del MATERIAIS[:]
+doc_pt, sel_pt = modelo()
+try:
+    out_pt = rodar(["X", "material", "marcatipo", "fachada", True], doc_pt, sel_pt,
+                   ajustes=[('ESTRATEGIA_MATERIAL = ["instancia", "pintura", "tipo"]',
+                             'ESTRATEGIA_MATERIAL = ["tipo"]'),
+                            ('PERMITIR_TIPO_COMPARTILHADO = False',
+                             'PERMITIR_TIPO_COMPARTILHADO = True')])
+except Exception as e:
+    falhas.append("PERMITIR_TIPO_COMPARTILHADO: EXCECAO %s: %s" % (type(e).__name__, e))
+else:
+    if "compartilhados entre casas" in "\n".join(out_pt[0]):
+        falhas.append("PERMITIR_TIPO_COMPARTILHADO nao liberou")
+    else:
+        print("[material] PERMITIR_TIPO_COMPARTILHADO libera a gravacao no tipo")
 
 # --- erro nao tratado tem que virar relatorio, nunca null --------------------
 class DocQuebrado(object):

@@ -162,6 +162,25 @@ DIRECAO_FACHADA = None
 
 PREFIXO_MATERIAL = "ZYLO_FACHADA_"
 
+# modo == "material": ordem em que o script tenta aplicar o material.
+#   "instancia" -> parametro de material da INSTANCIA (Parts, modelos genericos,
+#                  familias preparadas). Nao afeta mais ninguem.
+#   "pintura"   -> Document.Paint na face da fachada. Funciona em parede comum
+#                  SEM duplicar tipo e SEM afetar outras casas. Padrao para parede.
+#   "tipo"      -> grava no material do TIPO. So e usado quando o tipo aparece
+#                  uma unica vez no plano; tipo compartilhado entre casas e
+#                  recusado e reportado, senao a cor vazaria para a vizinha.
+ESTRATEGIA_MATERIAL = ["instancia", "pintura", "tipo"]
+
+# Deixe True para o script tambem criar a APARENCIA do material (o asset que o
+# Revit usa em Realista e em renderizacao). Sem isso a cor aparece em Sombreado
+# e em Linha Oculta, mas nao no render. Se falhar, o script segue sem quebrar.
+CRIAR_APARENCIA = True
+
+# True libera gravar no material do TIPO mesmo quando o tipo e usado por mais de
+# uma casa. So ligue se voce souber que os tipos nao sao compartilhados.
+PERMITIR_TIPO_COMPARTILHADO = False
+
 # modo == "marcar" grava a decisao do script neste parametro de texto, no
 # formato  ZYLO:casa=7;papel=cima  — dai voce revisa numa tabela do Revit,
 # corrige o que ficou errado na mao, e roda de novo com casas="marcacao" e
@@ -963,6 +982,82 @@ def obter_material(doc, hex_texto, cache, hachura_id):
     return achado
 
 
+def garantir_aparencia(doc, material, cor, nome):
+    """Duplica um AppearanceAsset e grava o RGB nele, para a cor valer tambem em
+    Realista e no render. Precisa rodar FORA de transacao: o AppearanceAssetEditScope
+    abre a dele. Qualquer falha e silenciosa — a cor de sombreado ja foi gravada."""
+    try:
+        import Autodesk.Revit.DB.Visual as Visual
+    except Exception:
+        return False
+    try:
+        alvo = None
+        for a in DB.FilteredElementCollector(doc).OfClass(DB.AppearanceAssetElement):
+            if a.Name == nome:
+                alvo = a
+                break
+        if alvo is None:
+            base = None
+            for a in DB.FilteredElementCollector(doc).OfClass(DB.AppearanceAssetElement):
+                base = a
+                break
+            if base is None:
+                return False
+            alvo = base.Duplicate(nome)
+
+        escopo = Visual.AppearanceAssetEditScope(doc)
+        editavel = escopo.Start(alvo.Id)
+        propriedade = editavel.FindByName("generic_diffuse")
+        if propriedade is None:
+            escopo.Cancel()
+            return False
+        propriedade.SetValueAsColor(cor)
+        escopo.Commit(True)
+
+        TransactionManager.Instance.EnsureInTransaction(doc)
+        material.AppearanceAssetId = alvo.Id
+        TransactionManager.Instance.TransactionTaskDone()
+        return True
+    except Exception:
+        return False
+
+
+def aplicar_material_no_tipo(doc, elemento, material):
+    """Grava o material no TIPO do elemento. Muda todos os elementos daquele tipo —
+    por isso só é chamado quando o tipo aparece uma vez só no plano."""
+    try:
+        tipo = doc.GetElement(elemento.GetTypeId())
+    except Exception:
+        return False
+    if tipo is None:
+        return False
+    bip = getattr(DB.BuiltInParameter, 'STRUCTURAL_MATERIAL_PARAM', None)
+    for p in ([tipo.get_Parameter(bip)] if bip is not None else []):
+        if p is not None and not p.IsReadOnly:
+            try:
+                p.Set(material.Id)
+                return True
+            except Exception:
+                pass
+    try:
+        for p in tipo.Parameters:
+            if _param_de_material(p):
+                p.Set(material.Id)
+                return True
+    except Exception:
+        pass
+    # parede: a camada estrutural do CompoundStructure
+    try:
+        estrutura = tipo.GetCompoundStructure()
+        if estrutura is not None:
+            estrutura.SetMaterialId(0, material.Id)
+            tipo.SetCompoundStructure(estrutura)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 BIPS_MATERIAL = ['DPART_MATERIAL_ID_PARAM', 'MATERIAL_ID_PARAM',
                  'STRUCTURAL_MATERIAL_PARAM']
 
@@ -1293,10 +1388,85 @@ def principal():
                     else:
                         direcao = (0.0, -1.0, 0.0) if eixo == 0 else (-1.0, 0.0, 0.0)
 
+                    # ---- fase 1: criar os materiais (uma transacao) ----------
                     TransactionManager.Instance.EnsureInTransaction(doc)
                     hachura = id_hachura_solida(doc)
                     cache_mat = {}
+                    if modo in ("material", "paint"):
+                        for hexa in sorted(set(q['hex'] for q in plano)):
+                            obter_material(doc, hexa, cache_mat, hachura)
+                        resumo.append(u"{0} material(is) criado(s)/atualizado(s) com o "
+                                      u"RGB da paleta.".format(len(cache_mat)))
+                    TransactionManager.Instance.TransactionTaskDone()
+
+                    # ---- fase 2: aparencia (fora de transacao) ----------------
+                    if modo in ("material", "paint") and CRIAR_APARENCIA:
+                        aparencias = 0
+                        for nome_mat, mat in cache_mat.items():
+                            hexa = u"#" + nome_mat[len(PREFIXO_MATERIAL):]
+                            if garantir_aparencia(doc, mat, cor_revit(hexa), nome_mat):
+                                aparencias += 1
+                        if aparencias:
+                            resumo.append(u"{0} aparência(s) gravada(s): a cor vale "
+                                          u"também em Realista e no render.".format(aparencias))
+                        else:
+                            resumo.append(u"Aparência não gravada (a cor vale em Sombreado "
+                                          u"e Linha Oculta). Ponha CRIAR_APARENCIA = False "
+                                          u"para parar de tentar.")
+
+                    # ---- tipos compartilhados: a cor vazaria para a vizinha ---
+                    uso_no_plano, uso_no_doc = {}, {}
+                    if modo == "material" and "tipo" in ESTRATEGIA_MATERIAL:
+                        for q in plano:
+                            try:
+                                tid = id_valor(q['el'].GetTypeId())
+                            except Exception:
+                                continue
+                            uso_no_plano.setdefault(tid, set()).add(q['hex'])
+                        try:
+                            for el_doc in DB.FilteredElementCollector(doc) \
+                                            .WhereElementIsNotElementType():
+                                try:
+                                    tid = id_valor(el_doc.GetTypeId())
+                                except Exception:
+                                    continue
+                                if tid in uso_no_plano:
+                                    uso_no_doc[tid] = uso_no_doc.get(tid, 0) + 1
+                        except Exception:
+                            pass
+
+                    def tipo_e_seguro(elemento):
+                        """So mexe no tipo se ele for exclusivo deste elemento."""
+                        if PERMITIR_TIPO_COMPARTILHADO:
+                            return True
+                        try:
+                            tid = id_valor(elemento.GetTypeId())
+                        except Exception:
+                            return False
+                        if len(uso_no_plano.get(tid, set())) != 1:
+                            return False
+                        no_plano = len([1 for q in plano
+                                        if id_valor(q['el'].GetTypeId()) == tid])
+                        return uso_no_doc.get(tid, 0) <= no_plano
+
+                    # ---- fase 3: aplicar (uma transacao) ----------------------
+                    TransactionManager.Instance.EnsureInTransaction(doc)
                     ok, falhas = 0, []
+                    por_estrategia = {}
+                    tipos_recusados = set()
+
+                    def pintar_faces(el, mat):
+                        faces = faces_da_fachada(el, direcao)
+                        if not faces:
+                            return False
+                        for face in faces:
+                            try:
+                                if doc.IsPainted(el.Id, face):
+                                    doc.RemovePaint(el.Id, face)
+                            except Exception:
+                                pass
+                            doc.Paint(el.Id, face, mat.Id)
+                        return True
 
                     for p in plano:
                         el = p['el']
@@ -1308,35 +1478,61 @@ def principal():
                                 else:
                                     falhas.append((id_valor(el.Id),
                                                    u"'{0}' não editável".format(PARAM_MARCACAO)))
+
                             elif modo == "override":
                                 vista.SetElementOverrides(
                                     el.Id, montar_override(cor_revit(p['hex']), hachura))
                                 ok += 1
+
                             elif modo == "material":
                                 mat = obter_material(doc, p['hex'], cache_mat, hachura)
-                                if aplicar_material(el, mat):
+                                usado = None
+                                for estrategia in ESTRATEGIA_MATERIAL:
+                                    if estrategia == "instancia":
+                                        if aplicar_material(el, mat):
+                                            usado = u"instância"
+                                            break
+                                    elif estrategia == "pintura":
+                                        if pintar_faces(el, mat):
+                                            usado = u"pintura de face"
+                                            break
+                                    elif estrategia == "tipo":
+                                        if not tipo_e_seguro(el):
+                                            tipos_recusados.add(nome_seguro(el))
+                                            continue
+                                        if aplicar_material_no_tipo(doc, el, mat):
+                                            usado = u"material do tipo"
+                                            break
+                                if usado:
+                                    por_estrategia[usado] = por_estrategia.get(usado, 0) + 1
                                     ok += 1
                                 else:
                                     falhas.append((id_valor(el.Id),
-                                                   u"sem parâmetro de material editável"))
+                                                   u"nenhuma estratégia funcionou"))
+
                             else:  # paint
                                 mat = obter_material(doc, p['hex'], cache_mat, hachura)
-                                faces = faces_da_fachada(el, direcao)
-                                if not faces:
-                                    falhas.append((id_valor(el.Id), u"nenhuma face de fachada"))
-                                else:
-                                    for face in faces:
-                                        try:
-                                            if doc.IsPainted(el.Id, face):
-                                                doc.RemovePaint(el.Id, face)
-                                        except Exception:
-                                            pass
-                                        doc.Paint(el.Id, face, mat.Id)
+                                if pintar_faces(el, mat):
                                     ok += 1
+                                else:
+                                    falhas.append((id_valor(el.Id), u"nenhuma face de fachada"))
                         except Exception as erro:
                             falhas.append((id_valor(el.Id), str(erro)))
 
                     TransactionManager.Instance.TransactionTaskDone()
+
+                    if por_estrategia:
+                        resumo.append(u"Como o material foi aplicado:")
+                        for nome_e, n in sorted(por_estrategia.items(),
+                                                key=lambda kv: kv[1], reverse=True):
+                            resumo.append(u"   {0}: {1}".format(nome_e, n))
+                    if tipos_recusados:
+                        resumo.append(u"{0} tipo(s) NÃO foram alterados porque são "
+                                      u"compartilhados entre casas — mudar o tipo pintaria "
+                                      u"a vizinha junto. Esses caíram na pintura de face. "
+                                      u"Primeiros: {1}".format(
+                                          len(tipos_recusados),
+                                          ", ".join(sorted(tipos_recusados)[:5])))
 
                     resumo.append(u"Aplicado em {0} elemento(s).".format(ok))
                     if falhas:

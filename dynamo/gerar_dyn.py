@@ -53,7 +53,7 @@ py = {
 }
 
 cb_eixo  = code_block('"AUTO";', 'eixo da fileira: "AUTO", "X" ou "Y"')
-cb_modo  = code_block('"override";', 'modo: "override", "material", "paint" ou "limpar"')
+cb_modo  = code_block('"material";', 'modo: "material" (cor no modelo), "override" (so na vista), "paint", "marcar" ou "limpar"')
 cb_casas = code_block('"marcatipo";', 'casas: "marcatipo" (bloco + trio pela Marca de tipo), "grupo", "marcacao", um numero, "gap", "parametro" ou "trios"')
 cb_faixa = code_block('"fachada";', 'cores na casa: "fachada" (cima/baixo/moldura) ou "EIXO"/"X"/"Y"/"Z"/"AUTO"')
 bl_exec  = boolean(False)

@@ -49,7 +49,7 @@ O resumo avisa quando isso acontece: `AVISO: N casa(s) com algum papel vazio`.
 | Porta | Valores | Padrão |
 |---|---|---|
 | `eixo` | `"AUTO"`, `"X"`, `"Y"` — eixo em que a fileira se estende | `"AUTO"` |
-| `modo` | `"override"`, `"material"`, `"paint"`, `"marcar"`, `"limpar"` | `"override"` |
+| `modo` | `"material"`, `"override"`, `"paint"`, `"marcar"`, `"limpar"` | `"material"` |
 | `casas` | `"marcatipo"`, `"grupo"`, `"marcacao"`, um **número**, `"gap"`, `"parametro"`, `"trios"` | `"marcatipo"` |
 | `faixas` | `"fachada"`, `"parametro"`, `"EIXO"`, `"X"`, `"Y"`, `"Z"`, `"AUTO"` | `"fachada"` |
 | `executar` | `true` / `false` | `false` (simulação) |
@@ -305,13 +305,53 @@ Deu errado? `modo = "limpar"` com `executar = true` remove os overrides e a pint
 
 | Modo | O que faz | Limite |
 |---|---|---|
+| **`material`** | **Cria materiais `ZYLO_FACHADA_<HEX>` com o RGB da paleta e aplica no modelo.** A cor passa a existir no modelo, não só numa vista. | Ver abaixo. |
 | `override` | `View.SetElementOverrides` na vista ativa. | **Só naquela vista.** Não vai para render, schedule ou Realista. Bom para estudo e prancha. |
 | `material` | Cria/reusa materiais `ZYLO_FACHADA_<HEX>` no parâmetro de material da instância. | **Parede comum não tem** esse parâmetro na instância. Funciona em Parts, modelos genéricos e famílias preparadas. Falhas reportadas por elemento. |
 | `paint` | Cria os materiais e usa `Document.Paint` na face de fachada. | Única via paramétrica em parede sem duplicar tipo. Face escolhida por `DIRECAO_FACHADA`. |
 | `marcar` | Grava a decisão do script em `PARAM_MARCACAO` em vez de pintar. | Sobrescreve o parâmetro. É a etapa 1 do ciclo marcar → revisar → pintar. |
 | `limpar` | Remove overrides e a pintura feita por este script. | — |
 
-Valide a separação com `override` antes de partir para `paint`.
+### Como o modo `material` aplica a cor
+
+O material carrega o RGB em dois lugares: a **cor de sombreado** (`Color`, com
+`UseRenderAppearanceForShading = False`, que é o que faz a cor aparecer em Sombreado e
+Linha Oculta) e a **aparência** (`AppearanceAsset` duplicado com o `generic_diffuse`
+trocado, que é o que faz a cor aparecer em Realista e no render). Se a aparência falhar,
+o script segue e avisa — a cor de sombreado já foi gravada.
+
+Aplicar o material no elemento é o problema difícil, porque **parede comum não tem
+parâmetro de material de instância**: o material está no tipo. Então o script tenta uma
+cadeia, na ordem de `ESTRATEGIA_MATERIAL`:
+
+| Estratégia | O que faz | Afeta quem? |
+|---|---|---|
+| `instancia` | Parâmetro de material da instância. | Só aquele elemento. Funciona em Parts, modelos genéricos e famílias preparadas. |
+| `pintura` | `Document.Paint` na face da fachada. | Só aquela face daquele elemento. **É o caminho da parede comum**: colore sem duplicar tipo e sem tocar em ninguém. |
+| `tipo` | Material do tipo (parâmetro ou camada do `CompoundStructure`). | **Todos os elementos daquele tipo.** |
+
+A estratégia `tipo` tem uma trava: o script só a usa quando o tipo aparece **uma única
+vez** no plano e **não é usado por mais ninguém no documento**. Num modelo de
+levantamento os tipos são compartilhados entre casas (`Portão_metalico`,
+`PINTURA ACRILICA SIMPLES EM PAREDE`), e gravar no tipo pintaria a casa vizinha junto.
+Tipos recusados são listados no resumo e caem na pintura de face.
+
+`PERMITIR_TIPO_COMPARTILHADO = True` desliga a trava. Só ligue se você souber que os
+tipos não são compartilhados.
+
+O resumo diz por qual caminho cada elemento foi:
+
+```
+24 material(is) criado(s)/atualizado(s) com o RGB da paleta.
+24 aparência(s) gravada(s): a cor vale também em Realista e no render.
+Como o material foi aplicado:
+   pintura de face: 191
+   instância: 132
+3 tipo(s) NÃO foram alterados porque são compartilhados entre casas...
+```
+
+Valide a separação com `override` antes de partir para `material` — o override é
+reversível com `modo = "limpar"` e não deixa material nenhum no projeto.
 
 ---
 
