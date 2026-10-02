@@ -8,3 +8,4 @@ board.json
 dados.json
 *.docx
 *.pdf
+__pycache__/
