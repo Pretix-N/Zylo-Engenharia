@@ -1,0 +1,10 @@
+# Nunca versionar as credenciais do Trello
+trello_credenciais.txt
+
+# Saídas de cada rodada
+semana_*/
+semana_*.zip
+board.json
+dados.json
+*.docx
+*.pdf
